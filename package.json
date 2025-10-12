@@ -1,0 +1,57 @@
+{
+  "name": "ts-bf6-portal",
+  "version": "1.0.1",
+  "description": "TypeScript helpers and Portal runtime declarations for Battlefield 2042 modding",
+  "license": "Proprietary",
+  "files": [
+    "dist",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "globals.d.ts",
+    "globals.js"
+  ],
+  "types": "./dist/index.d.ts",
+  "keywords": [
+    "battlefield",
+    "bf2042",
+    "declarations",
+    "portal",
+    "sdk",
+    "types",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/The-Sir-Community/ts-bf6-portal"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./globals": {
+      "types": "./globals.d.ts",
+      "import": "./globals.js",
+      "default": "./globals.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "postbuild": "node ./scripts/post-build.js",
+    "prepublishOnly": "npm run build"
+  },
+  "homepage": "https://github.com/The-Sir-Community/ts-bf6-portal#readme",
+  "bugs": {
+    "url": "https://github.com/The-Sir-Community/ts-bf6-portal/issues"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
