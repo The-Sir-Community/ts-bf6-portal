@@ -1,5 +1,6 @@
 # Compiled JavaScript and source maps
 *.js
+!scripts/post-build.js
 *.js.map
 
 # Node modules

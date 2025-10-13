@@ -1,7 +1,7 @@
 {
   "name": "ts-bf6-portal",
   "version": "1.0.1",
-  "description": "TypeScript helpers and Portal runtime declarations for Battlefield 2042 modding",
+  "description": "TypeScript helpers and Portal runtime declarations for Battlefield 6 modding",
   "license": "Proprietary",
   "files": [
     "dist",
@@ -16,7 +16,7 @@
   "types": "./dist/index.d.ts",
   "keywords": [
     "battlefield",
-    "bf2042",
+    "bf6",
     "declarations",
     "portal",
     "sdk",
