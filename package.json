@@ -1,6 +1,6 @@
 {
   "name": "ts-bf6-portal",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "TypeScript helpers and Portal runtime declarations for Battlefield 6 modding",
   "license": "Proprietary",
   "files": [
@@ -58,10 +58,12 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "ts-portal-bundler": "github:The-Sir-Community/ts-portal-bundler"
+    "ts-portal-bundler": "github:The-Sir-Community/ts-portal-bundler",
+    "santiago-playweb-client": "github:The-Sir-Community/ts-webplay-client"
   },
   "bin": {
     "ts-portal-bundle": "./bin/ts-portal-bundle.mjs",
-    "ts-portal-bundler": "./bin/ts-portal-bundle.mjs"
+    "ts-portal-bundler": "./bin/ts-portal-bundle.mjs",
+    "ts-bf6-deploy": "./bin/ts-bf6-deploy.mjs"
   }
 }
