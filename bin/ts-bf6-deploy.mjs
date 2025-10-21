@@ -4,7 +4,14 @@ import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { bundle } from 'ts-portal-bundler/dist/bundler.js';
-import { SantiagoWebPlayClient } from 'santiago-playweb-client';
+import {
+  SantiagoWebPlayClient,
+  PlayElementModifier,
+  RotationBehavior,
+  BalancingMethod,
+  PublishState,
+  createTeams,
+} from 'santiago-playweb-client';
 
 const TOOL_NAME = 'ts-bf6-deploy';
 const DEFAULT_CONFIG_FILE = 'ts-bf6-portal.config.json';
@@ -66,22 +73,67 @@ function validateConfig(config) {
   if (!config || typeof config !== 'object') {
     throw new Error('Configuration file must contain a JSON object.');
   }
-  if (!config.experienceId || typeof config.experienceId !== 'string') {
-    throw new Error('Configuration is missing "experienceId" (string).');
+
+  // Support both old "experienceId" and new "id" field
+  const hasExperienceId = config.id || config.experienceId;
+  if (!hasExperienceId || typeof hasExperienceId !== 'string') {
+    throw new Error('Configuration is missing "id" or "experienceId" (string).');
   }
+
+  // Bundle configuration (required for bundling, optional if script.file is provided)
   const bundleCfg = config.bundle;
-  if (!bundleCfg || typeof bundleCfg !== 'object') {
-    throw new Error('Configuration is missing "bundle" object.');
+  const scriptCfg = config.script;
+
+  // If no bundle config, script must have a file specified
+  if (!bundleCfg && (!scriptCfg || !scriptCfg.file)) {
+    throw new Error('Configuration must have either a "bundle" object or "script.file" specified.');
   }
-  if (!bundleCfg.entry || typeof bundleCfg.entry !== 'string') {
-    throw new Error('Configuration bundle entry must be provided as a string.');
+
+  // Validate bundle config if provided
+  if (bundleCfg) {
+    if (typeof bundleCfg !== 'object') {
+      throw new Error('Configuration "bundle" must be an object.');
+    }
+    if (!bundleCfg.entry || typeof bundleCfg.entry !== 'string') {
+      throw new Error('Configuration bundle entry must be provided as a string.');
+    }
+    if (bundleCfg.outFile && typeof bundleCfg.outFile !== 'string') {
+      throw new Error('Configuration bundle outFile must be a string when provided.');
+    }
+    if (bundleCfg.tsconfig && typeof bundleCfg.tsconfig !== 'string') {
+      throw new Error('Configuration bundle tsconfig must be a string when provided.');
+    }
   }
-  if (bundleCfg.outFile && typeof bundleCfg.outFile !== 'string') {
-    throw new Error('Configuration bundle outFile must be a string when provided.');
+
+  // Validate script config if provided
+  if (scriptCfg && typeof scriptCfg === 'object') {
+    if (scriptCfg.file && typeof scriptCfg.file !== 'string') {
+      throw new Error('Configuration script.file must be a string when provided.');
+    }
+    if (scriptCfg.code && typeof scriptCfg.code !== 'string') {
+      throw new Error('Configuration script.code must be a string when provided.');
+    }
+    if (scriptCfg.inline && typeof scriptCfg.inline !== 'string') {
+      throw new Error('Configuration script.inline must be a string when provided.');
+    }
   }
-  if (bundleCfg.tsconfig && typeof bundleCfg.tsconfig !== 'string') {
-    throw new Error('Configuration bundle tsconfig must be a string when provided.');
+
+  if (config.name !== undefined && typeof config.name !== 'string') {
+    throw new Error('Configuration "name" must be a string when provided.');
   }
+
+  if (config.description !== undefined && typeof config.description !== 'string') {
+    throw new Error('Configuration "description" must be a string when provided.');
+  }
+
+  if (config.published !== undefined && typeof config.published !== 'boolean') {
+    throw new Error('Configuration "published" must be a boolean when provided.');
+  }
+
+  if (config.maps !== undefined && !Array.isArray(config.maps)) {
+    throw new Error('Configuration "maps" must be an array when provided.');
+  }
+
   if (config.includeDenied !== undefined && typeof config.includeDenied !== 'boolean') {
     throw new Error('Configuration "includeDenied" must be a boolean when provided.');
   }
@@ -136,6 +188,226 @@ function normalizeLineEndings(text) {
   return text.replace(/\r\n/g, '\n');
 }
 
+function getExperienceId(config) {
+  return config.id || config.experienceId;
+}
+
+function getPublishState(published) {
+  if (published === undefined) {
+    return undefined;
+  }
+  return published ? PublishState.PUBLISHED : PublishState.DRAFT;
+}
+
+function getRotationBehavior(rotation) {
+  if (!rotation) {
+    return RotationBehavior.LOOP;
+  }
+  const normalized = rotation.toUpperCase();
+  switch (normalized) {
+    case 'SHUFFLE':
+      return RotationBehavior.SHUFFLE;
+    case 'ONCE':
+      return RotationBehavior.ONCE;
+    default:
+      return RotationBehavior.LOOP;
+  }
+}
+
+function getBalancingMethod(balancing) {
+  if (!balancing) {
+    return BalancingMethod.SKILL;
+  }
+  const normalized = balancing.toUpperCase();
+  switch (normalized) {
+    case 'SQUAD':
+      return BalancingMethod.SQUAD;
+    case 'NONE':
+      return BalancingMethod.NONE;
+    default:
+      return BalancingMethod.SKILL;
+  }
+}
+
+async function loadTypeScriptCode(scriptConfig, bundleConfig, configDir, outFile) {
+  // If bundling is configured, bundle and use that
+  if (bundleConfig) {
+    const entryFile = resolvePath(configDir, bundleConfig.entry);
+    const tsconfigPath = bundleConfig.tsconfig
+      ? resolvePath(configDir, bundleConfig.tsconfig)
+      : undefined;
+
+    log(`Bundling from ${entryFile}`);
+    await mkdir(path.dirname(outFile), { recursive: true });
+
+    try {
+      bundle({ entryFile, outFile, tsConfigPath: tsconfigPath });
+    } catch (error) {
+      throw new Error(`Failed to bundle entry file: ${error.message}`);
+    }
+
+    const bundledScript = await readFile(outFile, 'utf8');
+    log(`Bundle complete (${bundledScript.length} bytes).`);
+    return bundledScript;
+  }
+
+  // Otherwise, load from script config
+  if (!scriptConfig) {
+    throw new Error('No TypeScript code specified. Provide either bundle or script configuration.');
+  }
+
+  if (scriptConfig.code) {
+    log('Using inline TypeScript code from script.code');
+    return scriptConfig.code;
+  }
+
+  if (scriptConfig.inline) {
+    log('Using inline TypeScript code from script.inline');
+    return scriptConfig.inline;
+  }
+
+  if (scriptConfig.file) {
+    const scriptPath = resolvePath(configDir, scriptConfig.file);
+    log(`Loading TypeScript from: ${scriptConfig.file}`);
+    return await readFile(scriptPath, 'utf8');
+  }
+
+  throw new Error('Script configuration must have either "file", "code", or "inline".');
+}
+
+function loadSpatialData(spatialConfig, configDir) {
+  if (!spatialConfig) {
+    return undefined;
+  }
+
+  if (spatialConfig.data) {
+    return spatialConfig.data;
+  }
+
+  if (spatialConfig.file) {
+    const spatialPath = resolvePath(configDir, spatialConfig.file);
+    const content = require('fs').readFileSync(spatialPath, 'utf8');
+    return JSON.parse(content);
+  }
+
+  return undefined;
+}
+
+function buildMutator(rule) {
+  const kind = {};
+
+  // Determine the mutator type based on the value type
+  if (typeof rule.value === 'boolean') {
+    kind.mutatorBoolean = { value: rule.value };
+  } else if (typeof rule.value === 'number') {
+    // Use int for whole numbers, float for decimals
+    if (Number.isInteger(rule.value)) {
+      kind.mutatorInt = { value: rule.value };
+    } else {
+      kind.mutatorFloat = { value: rule.value };
+    }
+  } else if (typeof rule.value === 'string') {
+    kind.mutatorString = { value: rule.value };
+  }
+
+  return {
+    name: rule.name,
+    category: rule.category,
+    kind,
+    id: rule.id,
+  };
+}
+
+function buildMapRotation(maps, configDir) {
+  if (!maps || !Array.isArray(maps) || maps.length === 0) {
+    return [];
+  }
+
+  return maps.map((mapConfig) => {
+    const mapName = mapConfig.map || mapConfig.levelName;
+    if (!mapName) {
+      throw new Error('Map configuration must have "map" or "levelName" specified.');
+    }
+
+    // Create base team composition
+    const teams = mapConfig.teams || [32, 32];
+    const balancing = getBalancingMethod(mapConfig.balancing || mapConfig.teamBalancing);
+    const teamComposition = createTeams(teams, balancing);
+
+    // Add bots if configured
+    if (mapConfig.bots && Array.isArray(mapConfig.bots)) {
+      teamComposition.internalTeams = mapConfig.bots.map((bot) => {
+        const teamId = bot.team || bot.teamId || 1;
+        const spawnType = bot.type ? bot.type.toUpperCase() : (bot.spawnType || 'FILL');
+        const capacityType = spawnType === 'FILL' ? 1 : 2;
+
+        return {
+          teamId,
+          capacity: bot.count,
+          capacityType,
+        };
+      });
+    }
+
+    const entry = {
+      levelName: mapName,
+      rounds: mapConfig.rounds || 1,
+      allowedSpectators: mapConfig.spectators || mapConfig.allowedSpectators || 4,
+      teamComposition,
+    };
+
+    // Load spatial data if specified
+    if (mapConfig.spatial || mapConfig.spatialData) {
+      const spatialConfig = mapConfig.spatial || mapConfig.spatialData;
+      const spatialData = loadSpatialData(spatialConfig, configDir);
+      if (spatialData) {
+        entry.spatialData = spatialData;
+        const filename = spatialConfig?.file
+          ? path.basename(spatialConfig.file)
+          : `${mapName}.spatial.json`;
+        entry.spatialFilename = filename;
+      }
+    }
+
+    // Add rules/mutators if configured
+    if (mapConfig.rules || mapConfig.mutators) {
+      const rules = mapConfig.rules || mapConfig.mutators;
+      entry.mutators = rules.map(buildMutator);
+    }
+
+    // Add joinability settings if configured
+    if (mapConfig.joinability || mapConfig.gameSettings) {
+      const joinability = mapConfig.joinability || mapConfig.gameSettings;
+      entry.blazeGameSettings = {
+        joinInProgress: joinability.joinInProgress !== undefined
+          ? (joinability.joinInProgress ? 1 : 2)
+          : joinability.openToJoinByPlayer !== undefined
+          ? (joinability.openToJoinByPlayer ? 1 : 2)
+          : undefined,
+        openToJoinByPlayer: joinability.openJoin !== undefined
+          ? (joinability.openJoin ? 1 : 2)
+          : joinability.openToJoinByPlayer !== undefined
+          ? (joinability.openToJoinByPlayer ? 1 : 2)
+          : undefined,
+        openToInvites: joinability.invites !== undefined
+          ? (joinability.invites ? 1 : 2)
+          : joinability.openToInvites !== undefined
+          ? (joinability.openToInvites ? 1 : 2)
+          : undefined,
+      };
+    }
+
+    // Add matchmaking settings if configured
+    if (mapConfig.matchmaking !== undefined) {
+      entry.gameServerJoinabilitySettings = {
+        matchmakingInProgress: mapConfig.matchmaking ? 1 : 2,
+      };
+    }
+
+    return entry;
+  });
+}
+
 async function loadConfig(configPath) {
   const exists = await fileExists(configPath);
   if (!exists) {
@@ -164,81 +436,121 @@ async function main() {
   const { configPath } = parseArgs(process.argv.slice(2));
   const cwd = process.cwd();
   const resolvedConfigPath = resolvePath(cwd, configPath);
+  const configDir = path.dirname(resolvedConfigPath);
   log(`Using config: ${resolvedConfigPath}`);
 
   const config = await loadConfig(resolvedConfigPath);
-  const bundleConfig = config.bundle;
+  const experienceId = getExperienceId(config);
   const sessionId = process.env[SESSION_ENV_VAR];
+
   if (!sessionId || sessionId.trim() === '') {
     throw new Error(
       `Missing ${SESSION_ENV_VAR}. Log into https://portal.battlefield.com/, copy your x-gateway-session-id, and export it as ${SESSION_ENV_VAR}.`
     );
   }
 
-  const entryFile = resolvePath(path.dirname(resolvedConfigPath), bundleConfig.entry);
+  // Determine where to write the bundled output
   const outFile = resolvePath(
-    path.dirname(resolvedConfigPath),
-    bundleConfig.outFile ?? DEFAULT_BUNDLE_PATH
+    configDir,
+    config.bundle?.outFile ?? DEFAULT_BUNDLE_PATH
   );
-  const tsconfigPath = bundleConfig.tsconfig
-    ? resolvePath(path.dirname(resolvedConfigPath), bundleConfig.tsconfig)
-    : undefined;
 
-  log(`Bundling from ${entryFile}`);
-  log(`Writing bundle to ${outFile}`);
-  await mkdir(path.dirname(outFile), { recursive: true });
+  // Load TypeScript code (bundled or from file)
+  const typeScriptCode = await loadTypeScriptCode(
+    config.script,
+    config.bundle,
+    configDir,
+    outFile
+  );
 
-  try {
-    bundle({ entryFile, outFile, tsConfigPath: tsconfigPath });
-  } catch (error) {
-    throw new Error(`Failed to bundle entry file: ${error.message}`);
-  }
+  const stampedScript = `// Updated ${new Date().toISOString()}\n${typeScriptCode}`;
 
-  const bundledScript = await readFile(outFile, 'utf8');
-  log(`Bundle complete (${bundledScript.length} bytes).`);
-
-  const stampedScript = `// Updated ${new Date().toISOString()}\n${bundledScript}`;
-
+  // Initialize client
   const client = new SantiagoWebPlayClient({ sessionId });
 
-  log('Updating script via Santiago WebPlay API');
-  const response = await client.updateTypeScriptCode(
-    config.experienceId,
-    stampedScript
-  );
-
-  const name = response?.playElement?.name ?? 'Unknown';
-  const updatedAttachment = selectTypeScriptAttachment(
-    response?.playElementDesign?.attachments ?? [],
-    undefined
-  );
-  const updatedFilename = getAttachmentFilename(updatedAttachment) ?? 'Script.ts';
-  log(`Deployment succeeded for experience ${config.experienceId} (${name}).`);
-  if (response?.playElement?.publishStateType !== undefined) {
-    log(`Publish state: ${response.playElement.publishStateType}`);
-  }
-
-  log('Verifying deployed TypeScript content');
-  const verification = await client.getPlayElementDecoded({
-    id: config.experienceId,
+  // Fetch current experience
+  log(`Fetching current experience (${experienceId})`);
+  const current = await client.getPlayElementDecoded({
+    id: experienceId,
     includeDenied: config.includeDenied ?? false,
   });
+
+  // Create modifier for updates
+  const modifier = new PlayElementModifier(current);
+
+  // Update basic properties
+  if (config.name) {
+    log(`Setting name: ${config.name}`);
+    modifier.setName(config.name);
+  }
+
+  if (config.description) {
+    log(`Setting description: ${config.description}`);
+    modifier.setDescription(config.description);
+  }
+
+  // Update publish state
+  if (config.published !== undefined) {
+    const publishState = getPublishState(config.published);
+    log(`Setting publish state: ${config.published ? 'PUBLISHED' : 'DRAFT'}`);
+    modifier.setPublishState(publishState);
+  }
+
+  // Update TypeScript code
+  log(`Updating TypeScript code (${stampedScript.length} bytes)`);
+  modifier.setTypeScriptCode(stampedScript);
+
+  // Update map rotation if provided
+  if (config.maps && Array.isArray(config.maps) && config.maps.length > 0) {
+    log(`Building map rotation with ${config.maps.length} map(s)`);
+    const mapEntries = buildMapRotation(config.maps, configDir);
+    const rotationBehavior = getRotationBehavior(config.rotation);
+    modifier.clearSpatialAttachments();
+    modifier.setMapRotation(mapEntries, rotationBehavior);
+  }
+
+  // Send the update
+  log('Sending update to Santiago WebPlay API');
+  const updated = await client.updatePlayElement({
+    id: experienceId,
+    ...modifier.build(),
+  });
+
+  log('Deployment succeeded');
+  if (updated.playElement?.name) {
+    log(`Experience name: ${updated.playElement.name}`);
+  }
+  if (updated.playElement?.publishStateType !== undefined) {
+    const publishState = updated.playElement.publishStateType === 2 ? 'PUBLISHED' : 'DRAFT';
+    log(`Publish state: ${publishState}`);
+  }
+
+  // Verify deployment
+  log('Verifying deployed TypeScript content');
+  const verification = await client.getPlayElementDecoded({
+    id: experienceId,
+    includeDenied: config.includeDenied ?? false,
+  });
+
   const verificationAttachment = selectTypeScriptAttachment(
     verification?.playElementDesign?.attachments ?? [],
-    updatedFilename
+    undefined
   );
   const latestCode = decodeAttachmentContent(verificationAttachment);
+
   if (!latestCode) {
     throw new Error('Could not retrieve TypeScript attachment after update.');
   }
 
   const expected = normalizeLineEndings(stampedScript);
   const actual = normalizeLineEndings(latestCode);
+
   if (expected !== actual) {
-    throw new Error(`Verification failed: remote code in ${updatedFilename} does not match bundled output.`);
+    throw new Error('Verification failed: remote code does not match deployed output.');
   }
 
-  log(`Verified ${updatedFilename} is up to date (${actual.length} bytes).`);
+  const filename = getAttachmentFilename(verificationAttachment) ?? 'Script.ts';
+  log(`Verified ${filename} is up to date (${actual.length} bytes).`);
 }
 
 main().catch((error) => {
