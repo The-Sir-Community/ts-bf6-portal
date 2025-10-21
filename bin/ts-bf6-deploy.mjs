@@ -27,14 +27,16 @@ function logError(message) {
 }
 
 function printUsage() {
-  console.log(`Usage: ${TOOL_NAME} [--config <path>]`);
+  console.log(`Usage: ${TOOL_NAME} [--config <path>] [--strings <path>] [--no-strings]`);
   console.log('');
   console.log('Flags:');
-  console.log('  --config <path>  Path to configuration file (defaults to ts-bf6-portal.config.json)');
+  console.log('  --config <path>   Path to configuration file (defaults to ts-bf6-portal.config.json)');
+  console.log('  --strings <path>  Attach the specified Strings.json file via PlayElementModifier.setStrings (defaults to dist/strings.json when present)');
+  console.log('  --no-strings      Disable automatic Strings attachment');
 }
 
 function parseArgs(argv) {
-  const result = { configPath: DEFAULT_CONFIG_FILE };
+  const result = { configPath: DEFAULT_CONFIG_FILE, stringsPath: undefined };
   const args = [...argv];
   while (args.length) {
     const arg = args.shift();
@@ -44,6 +46,14 @@ function parseArgs(argv) {
         throw new Error('--config flag requires a path argument');
       }
       result.configPath = next;
+    } else if (arg === '--strings') {
+      const next = args.shift();
+      if (!next) {
+        throw new Error('--strings flag requires a path argument');
+      }
+      result.stringsPath = next;
+    } else if (arg === '--no-strings') {
+      result.stringsPath = null;
     } else if (arg === '--help' || arg === '-h') {
       printUsage();
       process.exit(0);
@@ -293,6 +303,28 @@ function loadSpatialData(spatialConfig, configDir) {
   return undefined;
 }
 
+async function loadStringsContent(stringsPath) {
+  const exists = await fileExists(stringsPath);
+  if (!exists) {
+    throw new Error(`Strings file not found at ${stringsPath}`);
+  }
+
+  let content;
+  try {
+    content = await readFile(stringsPath, 'utf8');
+  } catch (error) {
+    throw new Error(`Failed to read Strings file ${stringsPath}: ${error.message}`);
+  }
+
+  try {
+    JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Strings file ${stringsPath} must be valid JSON: ${error.message}`);
+  }
+
+  return content;
+}
+
 function buildMutator(rule) {
   const kind = {};
 
@@ -433,10 +465,26 @@ function detectPermissionError(error) {
 }
 
 async function main() {
-  const { configPath } = parseArgs(process.argv.slice(2));
+  const { configPath, stringsPath } = parseArgs(process.argv.slice(2));
   const cwd = process.cwd();
   const resolvedConfigPath = resolvePath(cwd, configPath);
   const configDir = path.dirname(resolvedConfigPath);
+  const defaultStringsCandidate = resolvePath(configDir, path.join('dist', 'strings.json'));
+
+  let stringsFile = null;
+  let stringsResolution = 'none';
+  if (stringsPath === null) {
+    stringsResolution = 'disabled';
+  } else if (stringsPath === undefined) {
+    if (await fileExists(defaultStringsCandidate)) {
+      stringsFile = defaultStringsCandidate;
+      stringsResolution = 'auto';
+    }
+  } else {
+    stringsFile = resolvePath(configDir, stringsPath);
+    stringsResolution = 'explicit';
+  }
+
   log(`Using config: ${resolvedConfigPath}`);
 
   const config = await loadConfig(resolvedConfigPath);
@@ -462,7 +510,6 @@ async function main() {
     configDir,
     outFile
   );
-
   const stampedScript = `// Updated ${new Date().toISOString()}\n${typeScriptCode}`;
 
   // Initialize client
@@ -494,6 +541,17 @@ async function main() {
     const publishState = getPublishState(config.published);
     log(`Setting publish state: ${config.published ? 'PUBLISHED' : 'DRAFT'}`);
     modifier.setPublishState(publishState);
+  }
+
+  if (stringsFile) {
+    const stringsContent = await loadStringsContent(stringsFile);
+    const displayPath = path.relative(configDir, stringsFile) || stringsFile;
+    const basename = path.basename(stringsFile);
+    const suffix = stringsResolution === 'auto' ? ' (auto-detected)' : '';
+    log(`Attaching strings from ${displayPath}${suffix}`);
+    modifier.setStrings(stringsContent, basename);
+  } else if (stringsResolution === 'explicit') {
+    throw new Error('Strings file resolution failed unexpectedly.');
   }
 
   // Update TypeScript code
