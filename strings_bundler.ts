@@ -7,12 +7,14 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { createRequire } from "node:module";
 
 type StringsTable = Record<string, string>;
 
 const DEFAULT_SOURCE = "src";
 const DEFAULT_OUTPUT = "dist/strings.json";
+const require = createRequire(import.meta.url);
 
 interface StringEntry {
   value: string;
@@ -30,6 +32,7 @@ export interface BundleResult {
   sourceDir: string;
   missingSource: boolean;
   duplicates: DuplicateEntry[];
+  candidates: CandidateSuggestion[];
 }
 
 interface DuplicateEntry {
@@ -37,6 +40,26 @@ interface DuplicateEntry {
   duplicateSource: string;
   originalSource: string;
 }
+
+interface CandidateAccumulator {
+  value: string;
+  sources: Set<string>;
+}
+
+export interface CandidateSuggestion {
+  key: string;
+  value: string;
+  sources: string[];
+}
+
+type TypeScriptModule = typeof import("typescript");
+
+let cachedTypescript: TypeScriptModule | null | undefined;
+let warnedMissingTypescript = false;
+
+type TsNode = import("typescript").Node;
+type TsSourceFile = import("typescript").SourceFile;
+type TsStringLiteralLike = import("typescript").StringLiteralLike;
 
 function shouldProcessFile(entry: Dirent) {
   if (!entry.isFile()) {
@@ -141,6 +164,11 @@ export function bundleStrings({ sourceDir, outputFile }: BundleOptions): BundleR
     output[key] = value;
   }
 
+  const knownValues = new Set(Object.values(output));
+  const candidates = missingSource
+    ? []
+    : findMissingStringCandidates(sourceDir, knownValues);
+
   ensureOutputDirectoryExists(outputFile);
   writeFileSync(outputFile, `${JSON.stringify(output, null, 2)}\n`);
 
@@ -150,6 +178,7 @@ export function bundleStrings({ sourceDir, outputFile }: BundleOptions): BundleR
     sourceDir,
     missingSource,
     duplicates,
+    candidates,
   };
 }
 
@@ -252,6 +281,18 @@ function runCli(argv = process.argv.slice(2)) {
           `[strings-bundler] Duplicate key "${duplicate.key}" in ${duplicate.duplicateSource}; keeping value from ${duplicate.originalSource}.`
         );
       }
+      if (result.candidates.length > 0) {
+        console.warn(
+          `[strings-bundler] Detected ${result.candidates.length} candidate string${
+            result.candidates.length === 1 ? "" : "s"
+          } missing from ${result.outputFile}. Example JSON:`
+        );
+        const example: Record<string, string> = {};
+        for (const candidate of result.candidates) {
+          example[candidate.key] = candidate.value;
+        }
+        console.log(JSON.stringify(example, null, 2));
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -261,3 +302,257 @@ function runCli(argv = process.argv.slice(2)) {
 }
 
 runCli();
+
+function loadTypescriptModule(): TypeScriptModule | null {
+  if (cachedTypescript !== undefined) {
+    return cachedTypescript;
+  }
+
+  try {
+    cachedTypescript = require("typescript") as TypeScriptModule;
+  } catch (error) {
+    cachedTypescript = null;
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError?.code === "MODULE_NOT_FOUND") {
+      if (!warnedMissingTypescript) {
+        console.warn(
+          "[strings-bundler] Skipping TypeScript string scan; runtime dependency \"typescript\" not found."
+        );
+        warnedMissingTypescript = true;
+      }
+    } else if (!warnedMissingTypescript) {
+      console.warn(
+        `[strings-bundler] Skipping TypeScript string scan; failed to load \"typescript\": ${nodeError?.message ?? error}`
+      );
+      warnedMissingTypescript = true;
+    }
+  }
+
+  return cachedTypescript;
+}
+
+function findMissingStringCandidates(
+  sourceDir: string,
+  knownValues: Set<string>
+): CandidateSuggestion[] {
+  const ts = loadTypescriptModule();
+  if (!ts) {
+    return [];
+  }
+
+  const accumulator = new Map<string, CandidateAccumulator>();
+  const queue: string[] = [sourceDir];
+
+  while (queue.length > 0) {
+    const currentDir = queue.pop()!;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(currentDir, { withFileTypes: true });
+    } catch (error) {
+      console.warn(
+        `[strings-bundler] Unable to read directory ${currentDir}: ${(error as Error).message}`
+      );
+      continue;
+    }
+
+    for (const entry of entries) {
+      const entryPath = join(currentDir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (shouldSkipDirectory(entry.name)) {
+          continue;
+        }
+
+        queue.push(entryPath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      if (!isTypescriptFile(entry.name)) {
+        continue;
+      }
+
+      processTypescriptFile(ts, entryPath, knownValues, accumulator);
+    }
+  }
+
+  const suggestions = Array.from(accumulator.values())
+    .sort((a, b) => a.value.localeCompare(b.value))
+    .map(({ value, sources }) => ({ value, sources: Array.from(sources).sort() }));
+
+  const usedKeys = new Set<string>();
+  return suggestions.map(({ value, sources }) => {
+    const baseKey = buildCandidateKey(value);
+    const uniqueKey = makeUniqueKey(baseKey, usedKeys);
+    usedKeys.add(uniqueKey);
+
+    return {
+      key: uniqueKey,
+      value,
+      sources,
+    };
+  });
+}
+
+function shouldSkipDirectory(name: string) {
+  return name === "node_modules" || name === "dist" || name.startsWith(".");
+}
+
+function isTypescriptFile(fileName: string) {
+  if (fileName.endsWith(".d.ts")) {
+    return false;
+  }
+
+  return fileName.endsWith(".ts") || fileName.endsWith(".tsx");
+}
+
+function processTypescriptFile(
+  ts: TypeScriptModule,
+  filePath: string,
+  knownValues: Set<string>,
+  accumulator: Map<string, CandidateAccumulator>
+) {
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf8");
+  } catch (error) {
+    console.warn(
+      `[strings-bundler] Unable to read ${filePath}: ${(error as Error).message}`
+    );
+    return;
+  }
+
+  const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+
+  const visit = (node: TsNode) => {
+    const typedNode = node as import("typescript").Node;
+    if (ts.isStringLiteralLike(typedNode)) {
+      const literal = typedNode as TsStringLiteralLike;
+      if (shouldSkipStringLiteral(ts, literal)) {
+        return;
+      }
+
+      const value = literal.text;
+      if (!value) {
+        return;
+      }
+
+      if (knownValues.has(value)) {
+        return;
+      }
+
+      const { line } = sourceFile.getLineAndCharacterOfPosition(literal.getStart(sourceFile));
+      const location = `${relative(process.cwd(), filePath)}:${line + 1}`;
+      const existing = accumulator.get(value);
+      if (existing) {
+        existing.sources.add(location);
+      } else {
+        accumulator.set(value, {
+          value,
+          sources: new Set([location]),
+        });
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+}
+
+function shouldSkipStringLiteral(ts: TypeScriptModule, node: TsStringLiteralLike) {
+  const parent = node.parent;
+  if (!parent) {
+    return false;
+  }
+
+  if (
+    (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) &&
+    parent.moduleSpecifier === node
+  ) {
+    return true;
+  }
+
+  if (ts.isExternalModuleReference(parent) && parent.expression === node) {
+    return true;
+  }
+
+  if (ts.isLiteralTypeNode(parent)) {
+    return true;
+  }
+
+  if (
+    (ts.isPropertyAssignment(parent) || ts.isPropertySignature(parent) || ts.isMethodDeclaration(parent)) &&
+    parent.name === node
+  ) {
+    return true;
+  }
+
+  if (ts.isEnumMember(parent) && parent.name === node) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildCandidateKey(value: string) {
+  const sanitized = value
+    .replace(/\{[^}]*\}/g, " ")
+    .replace(/["'`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  const words = sanitized
+    .split(/[^a-z0-9]+/g)
+    .filter(Boolean)
+    .slice(0, 6);
+
+  if (words.length === 0) {
+    return "stringCandidate";
+  }
+
+  const [first, ...rest] = words;
+  const camel =
+    normalizeLeadingCharacter(first) + rest.map((word) => capitalize(word)).join("");
+
+  return camel.slice(0, 50);
+}
+
+function makeUniqueKey(baseKey: string, usedKeys: Set<string>) {
+  let candidate = baseKey;
+  let index = 2;
+  while (usedKeys.has(candidate)) {
+    candidate = `${baseKey}${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function normalizeLeadingCharacter(word: string): string {
+  if (!word) {
+    return "string";
+  }
+
+  const first = word[0];
+  if (/[a-z]/.test(first)) {
+    return word;
+  }
+
+  if (/[0-9]/.test(first)) {
+    return `string${capitalize(word)}`;
+  }
+
+  return word.slice(1) ? normalizeLeadingCharacter(word.slice(1)) : "string";
+}
+
+function capitalize(word: string) {
+  if (!word) {
+    return word;
+  }
+
+  return word[0].toUpperCase() + word.slice(1);
+}
