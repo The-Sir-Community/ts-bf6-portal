@@ -10,25 +10,12 @@ The package exposes a `ts-bf6-deploy` CLI that bundles your script and uploads i
 
 1. Create a `ts-bf6-portal.config.json` in your project (copy `ts-bf6-portal.config.sample.json` to get started):
 
-   **Basic Example (Script Only):**
-   ```json
-   {
-     "id": "your-experience-uuid",
-     "bundle": {
-       "entry": "src/index.ts",
-       "outFile": "dist/portal-bundle.ts",
-       "tsconfig": "tsconfig.json"
-     }
-   }
-   ```
-
    **Full Featured Example (with Maps, Rules, and Settings):**
    ```json
    {
      "id": "your-experience-uuid",
      "name": "My Custom Game Mode",
      "description": "A custom Battlefield Portal experience",
-     "published": false,
      "script": {
        "file": "src/index.ts"
      },

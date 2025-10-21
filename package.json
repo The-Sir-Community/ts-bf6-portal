@@ -64,6 +64,7 @@
   "bin": {
     "ts-portal-bundle": "./bin/ts-portal-bundle.mjs",
     "ts-portal-bundler": "./bin/ts-portal-bundle.mjs",
-    "ts-bf6-deploy": "./bin/ts-bf6-deploy.mjs"
+    "ts-bf6-deploy": "./bin/ts-bf6-deploy.mjs",
+    "ts-bf6-strings": "./dist/strings_bundler.js"
   }
 }
