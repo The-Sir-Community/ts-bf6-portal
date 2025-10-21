@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile, access, mkdir } from 'node:fs/promises';
-import { constants as fsConstants } from 'node:fs';
+import { constants as fsConstants, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { bundle } from 'ts-portal-bundler/dist/bundler.js';
@@ -296,7 +296,7 @@ function loadSpatialData(spatialConfig, configDir) {
 
   if (spatialConfig.file) {
     const spatialPath = resolvePath(configDir, spatialConfig.file);
-    const content = require('fs').readFileSync(spatialPath, 'utf8');
+    const content = readFileSync(spatialPath, 'utf8');
     return JSON.parse(content);
   }
 
