@@ -14,6 +14,7 @@ type StringsTable = Record<string, string>;
 
 const DEFAULT_SOURCE = "src";
 const DEFAULT_OUTPUT = "dist/strings.json";
+const DEFAULT_EXCLUDE = "exclude.json";
 const require = createRequire(import.meta.url);
 
 interface StringEntry {
@@ -24,6 +25,7 @@ interface StringEntry {
 export interface BundleOptions {
   sourceDir: string;
   outputFile: string;
+  excludeFile?: string | null;
 }
 
 export interface BundleResult {
@@ -33,6 +35,9 @@ export interface BundleResult {
   missingSource: boolean;
   duplicates: DuplicateEntry[];
   candidates: CandidateSuggestion[];
+  excluded: ExcludedEntry[];
+  excludeFile: string | null;
+  excludeFileMissing: boolean;
 }
 
 interface DuplicateEntry {
@@ -52,13 +57,24 @@ export interface CandidateSuggestion {
   sources: string[];
 }
 
+interface ExcludedEntry {
+  key: string;
+  value: string;
+  source: string;
+}
+
+interface ExcludeData {
+  values: Set<string>;
+  filePath: string | null;
+  missing: boolean;
+}
+
 type TypeScriptModule = typeof import("typescript");
 
 let cachedTypescript: TypeScriptModule | null | undefined;
 let warnedMissingTypescript = false;
 
 type TsNode = import("typescript").Node;
-type TsSourceFile = import("typescript").SourceFile;
 type TsStringLiteralLike = import("typescript").StringLiteralLike;
 
 function shouldProcessFile(entry: Dirent) {
@@ -144,7 +160,7 @@ function collectStrings(
   }
 }
 
-export function bundleStrings({ sourceDir, outputFile }: BundleOptions): BundleResult {
+export function bundleStrings({ sourceDir, outputFile, excludeFile }: BundleOptions): BundleResult {
   const strings = new Map<string, StringEntry>();
   const duplicates: DuplicateEntry[] = [];
   let missingSource = false;
@@ -159,26 +175,42 @@ export function bundleStrings({ sourceDir, outputFile }: BundleOptions): BundleR
     keyA.localeCompare(keyB)
   );
 
+  const excludeData = loadExcludeValues(excludeFile);
+  const filteredEntries: Array<[string, StringEntry]> = [];
+  const excluded: ExcludedEntry[] = [];
+
+  for (const [key, entry] of sorted) {
+    if (excludeData.values.has(entry.value)) {
+      excluded.push({ key, value: entry.value, source: entry.source });
+      continue;
+    }
+
+    filteredEntries.push([key, entry]);
+  }
+
   const output: StringsTable = {};
-  for (const [key, { value }] of sorted) {
+  for (const [key, { value }] of filteredEntries) {
     output[key] = value;
   }
 
   const knownValues = new Set(Object.values(output));
   const candidates = missingSource
     ? []
-    : findMissingStringCandidates(sourceDir, knownValues);
+    : findMissingStringCandidates(sourceDir, knownValues, excludeData.values);
 
   ensureOutputDirectoryExists(outputFile);
   writeFileSync(outputFile, `${JSON.stringify(output, null, 2)}\n`);
 
   return {
-    count: sorted.length,
+    count: filteredEntries.length,
     outputFile,
     sourceDir,
     missingSource,
     duplicates,
     candidates,
+    excluded,
+    excludeFile: excludeData.filePath,
+    excludeFileMissing: excludeData.missing,
   };
 }
 
@@ -186,6 +218,7 @@ function parseCliArgs(argv: string[]) {
   const positionals: string[] = [];
   let source: string | undefined;
   let output: string | undefined;
+  let exclude: string | null | undefined;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -211,6 +244,18 @@ function parseCliArgs(argv: string[]) {
         output = argv[i + 1];
         i += 1;
         break;
+      case "-e":
+      case "--exclude":
+        if (i + 1 >= argv.length) {
+          throw new Error(`[strings-bundler] Missing value for ${arg}.`);
+        }
+
+        exclude = argv[i + 1];
+        i += 1;
+        break;
+      case "--no-exclude":
+        exclude = null;
+        break;
       default:
         positionals.push(arg);
     }
@@ -232,6 +277,7 @@ function parseCliArgs(argv: string[]) {
   return {
     source: source ?? DEFAULT_SOURCE,
     output: output ?? DEFAULT_OUTPUT,
+    exclude,
   };
 }
 
@@ -244,12 +290,15 @@ function printHelp() {
 Options:
   -s, --source <dir>   Source directory to scan (${DEFAULT_SOURCE})
   -o, --output <file>  Destination path (${DEFAULT_OUTPUT})
+  -e, --exclude <file> JSON file of string values to ignore (${DEFAULT_EXCLUDE} if present)
+      --no-exclude     Disable exclude list processing
   -h, --help           Show this help message
 
 Examples:
   ${scriptName}                              ${indent}# bundle from ./src to ./dist/strings.json
   ${scriptName} ./content ./public/strings.json  ${indent}# positional overrides
   ${scriptName} --source assets --output build/strings.json
+  ${scriptName} --exclude i18n/exclude.json
 `);
 }
 
@@ -260,11 +309,20 @@ function runCli(argv = process.argv.slice(2)) {
   }
 
   try {
-    const { source, output } = parseCliArgs(argv);
+    const { source, output, exclude } = parseCliArgs(argv);
     const sourceDir = resolve(process.cwd(), source);
     const outputFile = resolve(process.cwd(), output);
+    let excludeFile: string | null;
+    if (exclude === null) {
+      excludeFile = null;
+    } else if (exclude === undefined) {
+      const defaultPath = resolve(process.cwd(), DEFAULT_EXCLUDE);
+      excludeFile = existsSync(defaultPath) ? defaultPath : null;
+    } else {
+      excludeFile = resolve(process.cwd(), exclude);
+    }
 
-    const result = bundleStrings({ sourceDir, outputFile });
+    const result = bundleStrings({ sourceDir, outputFile, excludeFile });
 
     if (result.missingSource) {
       console.warn(
@@ -280,6 +338,20 @@ function runCli(argv = process.argv.slice(2)) {
         console.warn(
           `[strings-bundler] Duplicate key "${duplicate.key}" in ${duplicate.duplicateSource}; keeping value from ${duplicate.originalSource}.`
         );
+      }
+      if (result.excludeFile) {
+        const displayPath = relative(process.cwd(), result.excludeFile) || result.excludeFile;
+        if (result.excludeFileMissing) {
+          console.warn(
+            `[strings-bundler] Exclude file "${displayPath}" not found; no values were excluded.`
+          );
+        } else if (result.excluded.length > 0) {
+          console.warn(
+            `[strings-bundler] Excluded ${result.excluded.length} entr${
+              result.excluded.length === 1 ? "y" : "ies"
+            } using "${displayPath}".`
+          );
+        }
       }
       if (result.candidates.length > 0) {
         console.warn(
@@ -302,6 +374,99 @@ function runCli(argv = process.argv.slice(2)) {
 }
 
 runCli();
+
+function loadExcludeValues(excludeFile?: string | null): ExcludeData {
+  if (!excludeFile) {
+    return {
+      values: new Set(),
+      filePath: null,
+      missing: false,
+    };
+  }
+
+  if (!existsSync(excludeFile)) {
+    return {
+      values: new Set(),
+      filePath: excludeFile,
+      missing: true,
+    };
+  }
+
+  const raw = readFileSync(excludeFile, "utf8");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `[strings-bundler] Failed to parse exclude file ${excludeFile}: ${(error as Error).message}`
+    );
+  }
+
+  let stringList: string[] | undefined;
+
+  if (Array.isArray(parsed)) {
+    stringList = normalizeExcludeArray(parsed, excludeFile);
+  } else if (parsed && typeof parsed === "object") {
+    const record = parsed as Record<string, unknown>;
+    const candidate = record.strings ?? record.values;
+
+    if (Array.isArray(candidate)) {
+      stringList = normalizeExcludeArray(candidate, excludeFile);
+    } else {
+      const collected: string[] = [];
+      for (const [key, value] of Object.entries(record)) {
+        if (typeof value === "string") {
+          collected.push(value);
+        } else {
+          throw new Error(
+            `[strings-bundler] Exclude file ${excludeFile} entry "${key}" must be a string.`
+          );
+        }
+      }
+
+      if (collected.length === 0) {
+        throw new Error(
+          `[strings-bundler] Exclude file ${excludeFile} must contain string values.`
+        );
+      }
+
+      stringList = collected;
+    }
+  }
+
+  if (!stringList) {
+    throw new Error(
+      `[strings-bundler] Exclude file ${excludeFile} must be an array of strings, an object with a "strings" array, or a map of string values.`
+    );
+  }
+
+  return {
+    values: new Set(stringList),
+    filePath: excludeFile,
+    missing: false,
+  };
+}
+
+function normalizeExcludeArray(values: unknown[], excludeFile: string) {
+  const strings: string[] = [];
+  for (const [index, entry] of values.entries()) {
+    if (typeof entry !== "string") {
+      throw new Error(
+        `[strings-bundler] Exclude file ${excludeFile} contains a non-string entry at index ${index}.`
+      );
+    }
+    strings.push(entry);
+  }
+
+  if (strings.length === 0) {
+    throw new Error(
+      `[strings-bundler] Exclude file ${excludeFile} must contain at least one string.`
+    );
+  }
+
+  return strings;
+}
 
 function loadTypescriptModule(): TypeScriptModule | null {
   if (cachedTypescript !== undefined) {
@@ -333,7 +498,8 @@ function loadTypescriptModule(): TypeScriptModule | null {
 
 function findMissingStringCandidates(
   sourceDir: string,
-  knownValues: Set<string>
+  knownValues: Set<string>,
+  excludeValues: Set<string>
 ): CandidateSuggestion[] {
   const ts = loadTypescriptModule();
   if (!ts) {
@@ -375,7 +541,7 @@ function findMissingStringCandidates(
         continue;
       }
 
-      processTypescriptFile(ts, entryPath, knownValues, accumulator);
+      processTypescriptFile(ts, entryPath, knownValues, excludeValues, accumulator);
     }
   }
 
@@ -413,6 +579,7 @@ function processTypescriptFile(
   ts: TypeScriptModule,
   filePath: string,
   knownValues: Set<string>,
+  excludeValues: Set<string>,
   accumulator: Map<string, CandidateAccumulator>
 ) {
   let content: string;
@@ -440,7 +607,7 @@ function processTypescriptFile(
         return;
       }
 
-      if (knownValues.has(value)) {
+      if (knownValues.has(value) || excludeValues.has(value)) {
         return;
       }
 
