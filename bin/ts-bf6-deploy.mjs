@@ -11,7 +11,9 @@ import {
 
 const TOOL_NAME = 'ts-bf6-deploy';
 const DEFAULT_CONFIG_FILE = 'ts-bf6-portal.config.json';
-const SESSION_ENV_VAR = 'TS_BF6_GATEWAY_SESSION_ID';
+const DEFAULT_ENV_FILE = '.env';
+const SESSION_ENV_VAR = 'BF_PORTAL_SESSION_ID';
+const EXPERIENCE_ID_ENV_VAR = 'BF_PORTAL_EXPERIENCE_ID';
 const DEFAULT_BUNDLE_PATH = path.join('dest', 'portal-bundle.ts');
 
 function log(message) {
@@ -23,16 +25,21 @@ function logError(message) {
 }
 
 function printUsage() {
-  console.log(`Usage: ${TOOL_NAME} [--config <path>] [--strings <path>] [--no-strings]`);
+  console.log(`Usage: ${TOOL_NAME} [--config <path>] [--env-file <path>] [--strings <path>] [--no-strings]`);
   console.log('');
   console.log('Flags:');
   console.log('  --config <path>   Path to configuration file (defaults to ts-bf6-portal.config.json)');
+  console.log('  --env-file <path> Path to .env file (defaults to .env if present)');
   console.log('  --strings <path>  Attach the specified Strings.json file via PlayElementModifier.setStrings (defaults to dist/strings.json when present)');
   console.log('  --no-strings      Disable automatic Strings attachment');
+  console.log('');
+  console.log('Environment Variables:');
+  console.log(`  ${SESSION_ENV_VAR}       Session ID from https://portal.battlefield.com/ (can be in .env file)`);
+  console.log(`  ${EXPERIENCE_ID_ENV_VAR}  Experience ID to deploy to (can be in .env file or config)`);
 }
 
 function parseArgs(argv) {
-  const result = { configPath: DEFAULT_CONFIG_FILE, stringsPath: undefined };
+  const result = { configPath: DEFAULT_CONFIG_FILE, envFilePath: DEFAULT_ENV_FILE, stringsPath: undefined };
   const args = [...argv];
   while (args.length) {
     const arg = args.shift();
@@ -42,6 +49,12 @@ function parseArgs(argv) {
         throw new Error('--config flag requires a path argument');
       }
       result.configPath = next;
+    } else if (arg === '--env-file') {
+      const next = args.shift();
+      if (!next) {
+        throw new Error('--env-file flag requires a path argument');
+      }
+      result.envFilePath = next;
     } else if (arg === '--strings') {
       const next = args.shift();
       if (!next) {
@@ -64,6 +77,43 @@ function resolvePath(baseDir, maybeRelative) {
   return path.isAbsolute(maybeRelative)
     ? maybeRelative
     : path.resolve(baseDir, maybeRelative);
+}
+
+function loadEnvFile(envFilePath) {
+  if (!existsSync(envFilePath)) {
+    return null;
+  }
+
+  try {
+    const envContent = readFileSync(envFilePath, 'utf8');
+    const lines = envContent.split('\n');
+
+    for (const line of lines) {
+      // Skip empty lines and comments
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue;
+      }
+
+      // Parse KEY=VALUE
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex === -1) {
+        continue;
+      }
+
+      const key = trimmed.substring(0, eqIndex).trim();
+      const value = trimmed.substring(eqIndex + 1).trim();
+
+      // Only set if not already set from command line
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+
+    return lines.filter(l => l.trim() && !l.trim().startsWith('#')).length;
+  } catch (error) {
+    throw new Error(`Failed to load .env file ${envFilePath}: ${error.message}`);
+  }
 }
 
 
@@ -148,10 +198,17 @@ async function applyStringsIfConfigured(client, experienceId, configDir, strings
 }
 
 async function main() {
-  const { configPath, stringsPath } = parseArgs(process.argv.slice(2));
+  const { configPath, envFilePath, stringsPath } = parseArgs(process.argv.slice(2));
   const cwd = process.cwd();
   const resolvedConfigPath = resolvePath(cwd, configPath);
   const configDir = path.dirname(resolvedConfigPath);
+
+  // Load .env file if it exists
+  const resolvedEnvPath = resolvePath(cwd, envFilePath);
+  const envVarsLoaded = loadEnvFile(resolvedEnvPath);
+  if (envVarsLoaded) {
+    log(`Loaded ${envVarsLoaded} environment variable(s) from ${resolvedEnvPath}`);
+  }
 
   log(`Using config: ${resolvedConfigPath}`);
 
@@ -171,7 +228,9 @@ async function main() {
   const sessionId = process.env[SESSION_ENV_VAR];
   if (!sessionId || sessionId.trim() === '') {
     throw new Error(
-      `Missing ${SESSION_ENV_VAR}. Log into https://portal.battlefield.com/, copy your x-gateway-session-id, and export it as ${SESSION_ENV_VAR}.`
+      `Missing ${SESSION_ENV_VAR}. Log into https://portal.battlefield.com/, copy your x-gateway-session-id, and either:\n` +
+      `  1. Create a .env file with: ${SESSION_ENV_VAR}=<your-session-id>\n` +
+      `  2. Export it as an environment variable: export ${SESSION_ENV_VAR}=<your-session-id>`
     );
   }
 
@@ -195,9 +254,14 @@ async function main() {
 
   try {
     // Apply configuration using upstream client
-    const experienceId = config.id || config.experienceId;
+    const experienceId = config.id || config.experienceId || process.env[EXPERIENCE_ID_ENV_VAR];
     if (!experienceId) {
-      throw new Error('Configuration must have "id" or "experienceId".');
+      throw new Error(
+        `Experience ID is required. Provide it in one of these ways:\n` +
+        `  1. In config file as "id" or "experienceId"\n` +
+        `  2. In .env file as ${EXPERIENCE_ID_ENV_VAR}=<experience-id>\n` +
+        `  3. As an environment variable: export ${EXPERIENCE_ID_ENV_VAR}=<experience-id>`
+      );
     }
 
     log(`Deploying to experience: ${experienceId}`);
