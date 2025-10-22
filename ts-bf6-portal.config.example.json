@@ -1,0 +1,40 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "name": "My Portal Experience",
+  "description": "Example configuration demonstrating bundling, map rotation, and mutators.",
+  "published": false,
+  "includeDenied": false,
+  "bundle": {
+    "entry": "src/Script.ts",
+    "outFile": "dist/portal-bundle.ts",
+    "tsconfig": "tsconfig.json"
+  },
+  "maps": [
+    {
+      "map": "MP_Battery",
+      "rounds": 2,
+      "teams": [32, 32],
+      "balancing": "SKILL",
+      "spectators": 4,
+      "rules": [
+        {
+          "id": "INFINITE_AMMO",
+          "name": "Infinite Ammo",
+          "category": "WEAPON",
+          "value": true
+        }
+      ]
+    },
+    {
+      "map": "MP_Dromo",
+      "rounds": 1,
+      "teams": [16, 16],
+      "balancing": "SQUAD",
+      "spectators": 2,
+      "matchmaking": true,
+      "spatial": {
+        "file": "spatial/MP_Dromo.spatial.json"
+      }
+    }
+  ]
+}

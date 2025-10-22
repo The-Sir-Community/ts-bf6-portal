@@ -47,6 +47,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "postbuild": "node ./scripts/post-build.js",
+    "test": "tsx src/bundler/test-runner.ts",
     "prepublishOnly": "npm run build",
     "prepare": "npm run build"
   },
@@ -55,10 +56,12 @@
     "url": "https://github.com/The-Sir-Community/ts-bf6-portal/issues"
   },
   "devDependencies": {
-    "typescript": "^5.6.3"
+    "@types/node": "^24.7.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "ts-portal-bundler": "github:The-Sir-Community/ts-portal-bundler",
+    "ts-morph": "^27.0.0",
     "santiago-playweb-client": "github:The-Sir-Community/ts-webplay-client"
   },
   "bin": {

@@ -3,7 +3,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { bundle } from 'ts-portal-bundler/dist/bundler.js';
+import { bundle } from '../dist/src/bundler/bundler.js';
 import {
   SantiagoWebPlayClient,
   PlayElementModifier,
