@@ -1,0 +1,424 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/battlefield-portal-experience.schema.json",
+  "title": "Battlefield Portal Experience Configuration",
+  "description": "Simplified configuration for Battlefield Portal custom experiences\n\n## Quick Start\n\n1. **Example Config**: See `examples/example-experience.json` for a complete example\n2. **Upload Experience**: Use `ts-node examples/load-experience-from-config.ts <config-file> [experience-id] [session-id]` to upload\n3. **Download Experience**: Use `ts-node examples/download-experience-as-json.ts <experience-id> [output-file] [session-id]` to download\n\n## Key Features\n\n- **Script Support**: Inline TypeScript code or external file references\n- **Strings Support**: Inline localization strings or external JSON file\n- **Spatial Data**: Custom 3D object placement per map\n- **Per-Team Rules**: Different mutator values for each team\n- **Asset Restrictions**: Control which weapons, vehicles, gadgets, and equipment are available\n- **Bot Configuration**: AI bots with team-specific placement\n- **Flexible Rules**: Global and map-specific game rules/mutators",
+  "type": "object",
+  "required": ["name", "maps"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Experience ID (UUID) - can also be provided as CLI argument",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Experience name",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "description": {
+      "type": "string",
+      "description": "Experience description",
+      "maxLength": 500
+    },
+    "published": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to publish the experience (true) or keep as draft (false)"
+    },
+    "script": {
+      "type": "object",
+      "description": "TypeScript code - provide either a file path or inline code",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path to TypeScript file (e.g., './Script.ts' or './my-script.ts')"
+        },
+        "code": {
+          "type": "string",
+          "description": "Inline TypeScript code as a string"
+        }
+      },
+      "oneOf": [
+        { "required": ["file"] },
+        { "required": ["code"] }
+      ]
+    },
+    "strings": {
+      "type": "object",
+      "description": "Localization strings (JSON format) - provide either a file path or inline strings object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path to strings JSON file (e.g., './Strings.json')"
+        },
+        "data": {
+          "type": "object",
+          "description": "Inline localization strings as an object (e.g., { 'en-US': { 'key': 'value' } })"
+        }
+      },
+      "oneOf": [
+        { "required": ["file"] },
+        { "required": ["data"] }
+      ]
+    },
+    "maps": {
+      "type": "array",
+      "description": "Map rotation",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["map"],
+        "properties": {
+          "map": {
+            "type": "string",
+            "description": "Map code (e.g., 'MP_Battery', 'MP_Dumbo')",
+            "examples": ["MP_Battery", "MP_Dumbo", "MP_Journey", "MP_Ridge", "MP_Hourglass", "MP_Manifest"]
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name (for documentation, not sent to server)"
+          },
+          "rounds": {
+            "type": "integer",
+            "description": "Number of rounds",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 1
+          },
+          "spectators": {
+            "type": "integer",
+            "description": "Maximum spectators",
+            "minimum": 0,
+            "maximum": 10,
+            "default": 4
+          },
+          "teams": {
+            "type": "array",
+            "description": "Team sizes as array of numbers (e.g., [32, 32] for 32v32, [16, 16, 16] for 3-team)",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minItems": 2,
+            "default": [32, 32]
+          },
+          "balancing": {
+            "type": "string",
+            "enum": ["none", "skill", "squad"],
+            "default": "skill",
+            "description": "Team balancing method"
+          },
+          "spatial": {
+            "type": "object",
+            "description": "Custom 3D object placement",
+            "properties": {
+              "file": {
+                "type": "string",
+                "description": "Path to spatial JSON file"
+              },
+              "data": {
+                "type": "object",
+                "description": "Inline spatial data"
+              }
+            },
+            "oneOf": [
+              { "required": ["file"] },
+              { "required": ["data"] }
+            ]
+          },
+          "bots": {
+            "type": "array",
+            "description": "AI bots configuration",
+            "items": {
+              "type": "object",
+              "required": ["team", "count"],
+              "properties": {
+                "team": {
+                  "type": "integer",
+                  "description": "Team number (1-based)",
+                  "minimum": 1
+                },
+                "count": {
+                  "type": "integer",
+                  "description": "Number of bot slots",
+                  "minimum": 0
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["fill", "fixed"],
+                  "default": "fill",
+                  "description": "fill = fill empty slots, fixed = always spawn this many"
+                }
+              }
+            }
+          },
+          "rules": {
+            "type": "array",
+            "description": "Game rules/mutators (global or per-team)",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "title": "Global Rule",
+                  "description": "A rule that applies to all teams",
+                  "required": ["name", "value"],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Rule/mutator name (use Mutators constants in TypeScript)"
+                    },
+                    "value": {
+                      "description": "Rule value",
+                      "oneOf": [
+                        { "type": "boolean" },
+                        { "type": "number" },
+                        { "type": "string" }
+                      ]
+                    },
+                    "category": {
+                      "type": "string",
+                      "description": "Optional mutator category"
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Optional mutator ID"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "title": "Per-Team Rule (Sparse Mutator)",
+                  "description": "A rule with different values for each team",
+                  "required": ["name", "perTeamValues"],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Per-team mutator name (must end with _PER_TEAM, e.g., SOLDIER_MAX_HEALTH_PER_TEAM)"
+                    },
+                    "perTeamValues": {
+                      "type": "array",
+                      "description": "Array of per-team values (index 0 = team 1, index 1 = team 2, etc.)",
+                      "items": {
+                        "oneOf": [
+                          { "type": "boolean" },
+                          { "type": "number" }
+                        ]
+                      },
+                      "minItems": 1
+                    },
+                    "defaultValue": {
+                      "description": "Default value for teams not in perTeamValues array",
+                      "oneOf": [
+                        { "type": "boolean" },
+                        { "type": "number" }
+                      ]
+                    },
+                    "category": {
+                      "type": "string",
+                      "description": "Optional mutator category"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "joinability": {
+            "type": "object",
+            "description": "Join-in-progress and invite settings",
+            "properties": {
+              "joinInProgress": {
+                "type": "boolean",
+                "description": "Allow joining mid-game"
+              },
+              "openJoin": {
+                "type": "boolean",
+                "description": "Allow direct joins"
+              },
+              "invites": {
+                "type": "boolean",
+                "description": "Allow invites"
+              }
+            }
+          },
+          "matchmaking": {
+            "type": "boolean",
+            "description": "Enable matchmaking for this map",
+            "default": false
+          }
+        }
+      }
+    },
+    "rotation": {
+      "type": "string",
+      "enum": ["loop", "shuffle", "once"],
+      "default": "loop",
+      "description": "How to cycle through maps"
+    },
+    "globalRules": {
+      "type": "array",
+      "description": "Global game rules/mutators that apply to all maps (experience-level settings)",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "title": "Global Rule",
+            "description": "A rule that applies to all maps globally",
+            "required": ["name", "value"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Rule/mutator name (from Mutators constants)"
+              },
+              "value": {
+                "description": "Rule value",
+                "oneOf": [
+                  { "type": "boolean" },
+                  { "type": "number" },
+                  { "type": "string" }
+                ]
+              },
+              "category": {
+                "type": "string",
+                "description": "Optional mutator category"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "title": "Global Per-Team Rule",
+            "description": "A global rule with different values for each team",
+            "required": ["name", "perTeamValues"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Per-team mutator name (must end with _PER_TEAM)"
+              },
+              "perTeamValues": {
+                "type": "array",
+                "description": "Array of per-team values",
+                "items": {
+                  "oneOf": [
+                    { "type": "boolean" },
+                    { "type": "number" }
+                  ]
+                },
+                "minItems": 1
+              },
+              "defaultValue": {
+                "description": "Default value for teams not in perTeamValues array",
+                "oneOf": [
+                  { "type": "boolean" },
+                  { "type": "number" }
+                ]
+              },
+              "category": {
+                "type": "string",
+                "description": "Optional mutator category"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "restrictions": {
+      "type": "array",
+      "description": "Asset restrictions (weapons, vehicles, gadgets, etc.) - control which assets are available to players",
+      "items": {
+        "type": "object",
+        "title": "Asset Restriction",
+        "description": "Restrict which assets are available. Supports both asset category names (e.g., 'weapon') and specific asset UUIDs discovered when downloading experiences.",
+        "required": ["tagId"],
+        "properties": {
+          "tagId": {
+            "type": "string",
+            "description": "Asset category name (weapon, vehicle, gadget, etc.) or UUID. UUIDs are discovered automatically - check console logs when downloading experiences for unmapped UUIDs.",
+            "enum": ["weapon", "vehicle", "gadget", "melee", "throwable", "equipment", "class", "specialization"],
+            "examples": ["weapon", "vehicle", "gadget", "class_assault", "class_engineer"]
+          },
+          "allowAll": {
+            "type": "boolean",
+            "default": true,
+            "description": "Allow all assets in this category (true), or restrict to allowedTags only (false)"
+          },
+          "allowedTags": {
+            "type": "array",
+            "description": "Specific tags/assets to allow (only used if allowAll is false or specific assets are listed)",
+            "items": {
+              "type": "string"
+            }
+          },
+          "perTeamRestrictions": {
+            "type": "array",
+            "description": "Per-team asset restrictions",
+            "items": {
+              "type": "object",
+              "required": ["teamId"],
+              "properties": {
+                "teamId": {
+                  "type": "integer",
+                  "description": "Team ID (1-based)",
+                  "minimum": 1
+                },
+                "allowAll": {
+                  "type": "boolean",
+                  "description": "Allow all assets for this team"
+                },
+                "allowedTags": {
+                  "type": "array",
+                  "description": "Specific tags/assets allowed for this team",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "examples": [
+    {
+      "name": "Simple Experience with Inline Script",
+      "description": "Minimal configuration with inline TypeScript",
+      "config": {
+        "name": "My First Experience",
+        "maps": [
+          {
+            "map": "MP_Battery",
+            "teams": [32, 32]
+          }
+        ],
+        "script": {
+          "code": "console.log('Game started!');"
+        }
+      }
+    },
+    {
+      "name": "Experience with External Files",
+      "description": "Configuration with script and strings from files",
+      "config": {
+        "name": "My Advanced Experience",
+        "maps": [
+          {
+            "map": "MP_Battery"
+          }
+        ],
+        "script": {
+          "file": "./Script.ts"
+        },
+        "strings": {
+          "file": "./Strings.json"
+        }
+      }
+    }
+  ],
+  "$comment": "Workflow: 1) Edit this config file 2) Upload with: ts-node examples/load-experience-from-config.ts <config-file> <experience-id> [session-id] 3) Download changes with: ts-node examples/download-experience-as-json.ts <experience-id> [output-file] [session-id]"
+}

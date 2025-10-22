@@ -1,0 +1,444 @@
+syntax = "proto3";
+
+package battlefield.portal;
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+// ============================================================================
+// Main Request/Response Messages
+// ============================================================================
+
+message GetPlayElementRequest {
+  string id = 1;
+  bool include_denied = 2;
+}
+
+message PlayElementResponse {
+  PlayElement play_element = 1;
+  PlayElementDesign play_element_design = 2;
+  google.protobuf.StringValue progression_mode = 3;
+}
+
+message UpdatePlayElementRequest {
+  string id = 1;
+  string name = 2;
+  google.protobuf.StringValue description = 3;
+  DesignMetadata design_metadata = 4;
+  MapRotation map_rotation = 5;
+  repeated Mutator mutators = 6;
+  repeated AssetCategory asset_categories = 7;
+  bytes original_mod_rules = 8;
+  // field 9 is reserved/skipped
+  PlayElementSettings play_element_settings = 10;
+  PublishStateType publish_state = 11;
+  google.protobuf.StringValue mod_level_data_id = 12;
+  google.protobuf.StringValue thumbnail_url = 13;
+  repeated Attachment attachments = 14;
+}
+
+message DeleteAttachmentsRequest {
+  string play_element_design_id = 1;
+  repeated string attachment_ids = 2;
+}
+
+message DeleteAttachmentsResponse {
+  // Response appears to be empty (0 bytes message)
+}
+
+message PlayElement {
+  string id = 1;
+  string design_id = 2;
+  Creator creator = 3;
+  string name = 4;
+  google.protobuf.StringValue description = 5;
+  google.protobuf.Timestamp created = 6;
+  google.protobuf.Timestamp updated = 7;
+  PlayElementSettings play_element_settings = 8;
+  PublishStateType publish_state_type = 9;
+  google.protobuf.Int32Value likes = 10;
+  google.protobuf.Timestamp publish_at = 11;
+  google.protobuf.StringValue thumbnail_url = 12;
+  ModerationStateType moderation_state = 13;
+  google.protobuf.StringValue short_code = 14;
+}
+
+message PlayElementDesign {
+  string design_id = 1;
+  string design_name = 2;
+  // field 3 is reserved/skipped
+  google.protobuf.Timestamp created = 4;
+  DesignMetadata design_metadata = 5;
+  MapRotation map_rotation = 6;
+  repeated Mutator mutators = 7;
+  repeated AssetCategory asset_categories = 8;
+  repeated string license_requirements = 9;
+  ModRules mod_rules = 10;
+  // field 11 is reserved/skipped
+  repeated Tag tags = 12;
+  BlazePlayElementDesignSettings blaze_settings = 13;
+  google.protobuf.StringValue mod_level_data_id = 14;
+  repeated Attachment attachments = 15;
+  repeated string group_licenses = 16;
+  AttachmentCompileStatus attachment_compile_status = 17;
+  repeated string server_host_license_requirements = 18;
+}
+
+// ============================================================================
+// Creator Types
+// ============================================================================
+
+message Creator {
+  InternalCreator internal_creator = 1;
+  PlayerCreator player_creator = 2;
+  ExternalCreator external_creator = 3;
+  PlayerCreator trusted_creator = 4;
+}
+
+message InternalCreator {
+  // Empty message
+}
+
+message PlayerCreator {
+  Player player = 1;
+}
+
+message ExternalCreator {
+  // Empty message
+}
+
+message Player {
+  uint64 nucleus_id = 1;
+  uint64 persona_id = 2;
+  int32 platform = 3;
+}
+
+// ============================================================================
+// Design & Metadata
+// ============================================================================
+
+message DesignMetadata {
+  google.protobuf.StringValue progression_mode = 1;
+  repeated FirstPartyMetadata first_party_metadata = 2;
+}
+
+message FirstPartyMetadata {
+  PSNMetadata psn_metadata = 1;
+}
+
+message PSNMetadata {
+  string activity_id = 1;
+}
+
+message Tag {
+  string tag_id = 1;
+  int32 priority = 2;
+  Metadata metadata = 3;
+}
+
+message Metadata {
+  repeated TranslationMetadata translations = 1;
+  repeated Resource resources = 2;
+}
+
+message TranslationMetadata {
+  string kind = 1;
+  string translation_id = 2;
+}
+
+message Resource {
+  ResourceLocation location = 1;
+  string kind = 2;
+}
+
+message ResourceLocation {
+  string ref = 1;
+  string url = 2;
+}
+
+// ============================================================================
+// Mod Rules
+// ============================================================================
+
+message ModRules {
+  CompatibleModRules compatible_rules = 1;
+  IncompatibleModRules incompatible_rules = 2;
+  ErrorModRules error_rules = 3;
+}
+
+message CompatibleModRules {
+  bytes original = 1;
+  int32 rules_version = 2;
+  CompiledRules compiled = 3;
+}
+
+message IncompatibleModRules {
+  // Stub - add fields from website.js:15914 as needed
+}
+
+message ErrorModRules {
+  // Stub - add fields from website.js:15991 as needed
+}
+
+message CompiledRules {
+  Uncompressed uncompressed = 1;
+  Compressed compressed = 2;
+}
+
+message Uncompressed {
+  bytes compiled_mod_rules = 1;
+  int32 rules_version = 2;
+}
+
+message Compressed {
+  bytes compiled_mod_rules = 1;
+  int32 rules_version = 2;
+  int32 inflated_size = 3;
+}
+
+// ============================================================================
+// Map Rotation
+// ============================================================================
+
+message MapRotation {
+  repeated MapEntry maps = 1;
+  MapRotationAttributes attributes = 2;
+}
+
+message MapRotationAttributes {
+  RotationBehavior rotation_behavior = 1;
+}
+
+message MapEntry {
+  string level_name = 1;
+  string level_location = 2;
+  int32 rounds = 3;
+  int32 allowed_spectators = 4;
+  TeamComposition team_composition = 5;
+  BlazeGameSettings blaze_game_settings = 6;
+  repeated Mutator mutators = 7;
+  GameServerJoinabilitySettings game_server_joinability_settings = 8;
+}
+
+// ============================================================================
+// Mutators
+// ============================================================================
+
+message Mutator {
+  string name = 1;
+  string category = 2;
+  MutatorKind kind = 3;
+  string id = 4;
+}
+
+message MutatorKind {
+  MutatorBoolean mutator_boolean = 1;
+  // fields 2-3 are reserved/skipped
+  MutatorString mutator_string = 4;
+  MutatorFloat mutator_float = 5;
+  MutatorInt mutator_int = 6;
+  MutatorSparseBoolean mutator_sparse_boolean = 7;
+  MutatorSparseInt mutator_sparse_int = 8;
+  MutatorSparseFloat mutator_sparse_float = 9;
+}
+
+// Stub messages for mutator types (add details as needed)
+message MutatorBoolean {
+  bool value = 1;
+}
+
+message MutatorString {
+  string value = 1;
+}
+
+message MutatorFloat {
+  float value = 1;
+  int32 behaviour = 2;  // enum: MutatorBehaviour
+}
+
+message MutatorInt {
+  int32 value = 1;
+  int32 behaviour = 2;  // enum: MutatorBehaviour
+}
+
+message MutatorSparseBoolean {
+  bool default_value = 1;
+  uint32 size = 2;
+  repeated MutatorSparseBooleanEntry sparse_values = 3;
+}
+
+message MutatorSparseBooleanEntry {
+  uint32 index = 1;
+  bool value = 2;
+}
+
+message MutatorSparseInt {
+  int32 default_value = 1;
+  uint32 size = 2;
+  repeated MutatorSparseIntEntry sparse_values = 3;
+}
+
+message MutatorSparseIntEntry {
+  uint32 index = 1;
+  int32 value = 2;
+}
+
+message MutatorSparseFloat {
+  float default_value = 1;
+  uint32 size = 2;
+  repeated MutatorSparseFloatEntry sparse_values = 3;
+}
+
+message MutatorSparseFloatEntry {
+  uint32 index = 1;
+  float value = 2;
+}
+
+// ============================================================================
+// Asset Categories
+// ============================================================================
+
+message AssetCategory {
+  string tag_id = 1;
+  AssetCategoryBoolean boolean = 2;
+}
+
+message AssetCategoryBoolean {
+  bool default_value = 1;
+  AssetCategoryTagBooleanOverride overrides = 2;
+  repeated AssetCategoryTagBooleanTeamOverride team_overrides = 3;
+}
+
+message AssetCategoryTagBooleanOverride {
+  repeated string asset_category_tags = 1;
+  bool value = 2;
+}
+
+message AssetCategoryTagBooleanTeamOverride {
+  repeated string asset_category_tags = 1;
+  bool value = 2;
+  uint32 team_id = 3;
+}
+
+// ============================================================================
+// Play Element Settings
+// ============================================================================
+
+message PlayElementSettings {
+  google.protobuf.StringValue secret = 1;
+  repeated GameServerMessage messages = 2;
+  bool allow_copies = 3;
+}
+
+message GameServerMessage {
+  string kind = 1;
+  string text = 2;
+}
+
+// ============================================================================
+// Attachments
+// ============================================================================
+
+message Attachment {
+  string id = 1;
+  string version = 2;
+  google.protobuf.StringValue filename = 3;
+  bool is_processable = 4;
+  ProcessingStatus processing_status = 5;
+  AttachmentData attachment_data = 6;
+  AttachmentType attachment_type = 7;
+  google.protobuf.StringValue metadata = 8;
+  repeated string errors = 9;
+}
+
+message AttachmentData {
+  bytes original = 1;
+  google.protobuf.BytesValue compiled = 2;
+}
+
+// ============================================================================
+// Stub Messages (add fields as needed)
+// ============================================================================
+
+message TeamComposition {
+  repeated TeamStructure teams = 1;
+  repeated InternalTeamStructure internal_teams = 2;
+  int32 balancing_method = 3;  // enum: TeamBalancingMethod
+}
+
+message TeamStructure {
+  int32 team_id = 1;
+  int32 capacity = 2;
+}
+
+message InternalTeamStructure {
+  int32 team_id = 1;
+  int32 capacity = 2;
+  int32 capacity_type = 3;  // enum: InternalCapacityType
+}
+
+message BlazeGameSettings {
+  int32 join_in_progress = 1;        // enum: BlazeGameSettingValue
+  int32 open_to_join_by_player = 2;  // enum: BlazeGameSettingValue
+  int32 open_to_invites = 3;         // enum: BlazeGameSettingValue
+}
+
+message GameServerJoinabilitySettings {
+  int32 matchmaking_in_progress = 1;  // enum: GameServerJoinabilitySettingValue
+}
+
+message BlazePlayElementDesignSettings {
+  int32 open_group_reservations = 1;
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum PublishStateType {
+  PUBLISH_STATE_TYPE_INVALID = 0;
+  PUBLISH_STATE_TYPE_DRAFT = 1;
+  PUBLISH_STATE_TYPE_PUBLISHED = 2;
+  PUBLISH_STATE_TYPE_ARCHIVED = 3;
+  PUBLISH_STATE_TYPE_ERROR = 4;
+}
+
+enum RotationBehavior {
+  ROTATION_BEHAVIOR_LOOP = 0;
+  ROTATION_BEHAVIOR_EORMM = 1;
+  ROTATION_BEHAVIOR_ONE_MAP = 2;
+}
+
+enum ProcessingStatus {
+  PROCESSING_STATUS_UNSPECIFIED = 0;
+  PROCESSING_STATUS_PENDING = 1;
+  PROCESSING_STATUS_PROCESSED = 2;
+  PROCESSING_STATUS_NEEDS_RECOMPILE = 3;
+  PROCESSING_STATUS_ERROR = 4;
+}
+
+// NOTE: These enum values are based on actual server responses, NOT website.js
+// website.js has incorrect values (possibly outdated or for a different API)
+// Confirmed values from actual HAR captures and API responses
+enum AttachmentType {
+  ATTACHMENT_TYPE_UNSPECIFIED = 0;
+  ATTACHMENT_TYPE_SPATIAL = 1;       // ✓ Confirmed: JSON document representing spatial data of 3D objects in a level
+  ATTACHMENT_TYPE_SCRIPT = 2;        // ✓ Confirmed: TypeScript source files (e.g., Script.ts, output.ts)
+  ATTACHMENT_TYPE_SCRIPT_DATA = 3;   // Not confirmed from server data yet
+  ATTACHMENT_TYPE_STRINGS = 4;       // ✓ Confirmed: Strings.json localization files
+  ATTACHMENT_TYPE_MP_DATA = 5;       // Not confirmed from server data yet
+}
+
+enum ModerationStateType {
+  MODERATION_STATE_TYPE_UNDEFINED = 0;
+  MODERATION_STATE_TYPE_IN_REVIEW = 1;
+  MODERATION_STATE_TYPE_APPROVED = 2;
+  MODERATION_STATE_TYPE_DENIED = 3;
+}
+
+enum AttachmentCompileStatus {
+  ATTACHMENT_COMPILE_STATUS_UNSPECIFIED = 0;
+  ATTACHMENT_COMPILE_STATUS_OK = 1;
+  ATTACHMENT_COMPILE_STATUS_ERROR = 2;
+  ATTACHMENT_COMPILE_STATUS_INCOMPATIBLE_VERSION = 3;
+}

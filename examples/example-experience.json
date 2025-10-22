@@ -1,0 +1,158 @@
+{
+  "//": "Example Battlefield Portal Experience Configuration",
+  "$schema": "./experience.schema.json",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "name": "My Custom Experience",
+  "description": "A fun custom game mode",
+  "published": false,
+
+  "script": {
+    "code": "console.log('Hello Portal!');"
+  },
+
+  "strings": {
+    "file": "./example_attachments/Strings.json"
+  },
+
+  "_strings_inline_example": {
+    "data": {
+      "en-US": {
+        "ui_title": "My Experience",
+        "ui_description": "Custom game description"
+      },
+      "es-ES": {
+        "ui_title": "Mi Experiencia",
+        "ui_description": "Descripción del juego personalizado"
+      }
+    }
+  },
+
+  "maps": [
+    {
+      "map": "MP_Battery",
+      "name": "Iberian Offensive",
+      "rounds": 2,
+      "teams": [32, 32],
+      "balancing": "skill",
+      "spatial": {
+        "file": "./example_attachments/MP_Battery_BR6.spatial.json"
+      },
+      "bots": [
+        { "team": 1, "count": 16, "type": "fill" },
+        { "team": 2, "count": 16, "type": "fill" }
+      ],
+      "rules": [
+        { "name": "FriendlyFireDamageReflectionEnabled", "value": false },
+        { "name": "ProjectileSpeedMultiplier", "value": 1.0 },
+        { "name": "MaxPlayerCount_PerTeam", "value": 32 },
+        {
+          "name": "SOLDIER_MAX_HEALTH_PER_TEAM",
+          "perTeamValues": [1.0, 1.5],
+          "defaultValue": 1.0
+        }
+      ],
+      "joinability": {
+        "joinInProgress": true,
+        "openJoin": true,
+        "invites": true
+      }
+    },
+    {
+      "map": "MP_Dumbo",
+      "name": "High Speed Manhattan",
+      "rounds": 1,
+      "teams": [32, 32],
+      "balancing": "skill",
+      "bots": [
+        { "team": 1, "count": 12 },
+        { "team": 2, "count": 12 }
+      ],
+      "rules": [
+        { "name": "ProjectileSpeedMultiplier", "value": 2.5 },
+        { "name": "AimAssistSlowdownEnabled", "value": false },
+        {
+          "name": "SPRINT_ALLOWED_PER_TEAM",
+          "perTeamValues": [true, false],
+          "defaultValue": true
+        },
+        {
+          "name": "INFINITE_WEAPON_AMMO_PER_TEAM",
+          "perTeamValues": [false, true],
+          "defaultValue": false
+        }
+      ],
+      "joinability": {
+        "joinInProgress": true,
+        "openJoin": true
+      },
+      "matchmaking": false
+    },
+    {
+      "map": "MP_Battery",
+      "name": "3-Team Battle",
+      "rounds": 3,
+      "teams": [20, 20, 20],
+      "balancing": "none",
+      "bots": [
+        { "team": 1, "count": 8, "type": "fixed" },
+        { "team": 2, "count": 8, "type": "fixed" },
+        { "team": 3, "count": 8, "type": "fixed" }
+      ],
+      "rules": [
+        { "name": "FriendlyFireDamageReflectionEnabled", "value": true },
+        { "name": "FriendlyFireDamageReflectionMaxTeamKills", "value": 2 },
+        {
+          "name": "HUD_ALLOWED_PER_TEAM",
+          "perTeamValues": [true, true, false],
+          "defaultValue": true
+        },
+        {
+          "name": "DAMAGE_MULTIPLIER_PER_TEAM",
+          "perTeamValues": [0.8, 1.0, 1.2],
+          "defaultValue": 1.0
+        }
+      ]
+    }
+  ],
+
+  "rotation": "loop",
+
+  "globalRules": [
+    {
+      "name": "ProjectileSpeedMultiplier",
+      "value": 1.0
+    },
+    {
+      "name": "SOLDIER_REGEN_RATE_PER_TEAM",
+      "perTeamValues": [1.0, 0.5],
+      "defaultValue": 1.0
+    }
+  ],
+
+  "restrictions": [
+    {
+      "tagId": "weapon",
+      "allowAll": false,
+      "allowedTags": ["rifle_assault_m16a2", "rifle_sniper_spas12"]
+    },
+    {
+      "tagId": "gadget",
+      "allowAll": true
+    },
+    {
+      "tagId": "vehicle",
+      "allowAll": false,
+      "perTeamRestrictions": [
+        {
+          "teamId": 1,
+          "allowAll": true
+        },
+        {
+          "teamId": 2,
+          "allowAll": false,
+          "allowedTags": ["heli_transport_pod"]
+        }
+      ]
+    }
+  ]
+}

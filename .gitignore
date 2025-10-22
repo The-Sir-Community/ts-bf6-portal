@@ -36,3 +36,5 @@ yarn-error.log*
 
 # Test coverage reports
 coverage/
+
+raw_data/

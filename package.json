@@ -11,7 +11,8 @@
     "globals.d.ts",
     "globals.js",
     "bin",
-    "scripts/post-build.js"
+    "scripts/post-build.js",
+    "battlefield_portal.proto"
   ],
   "types": "./dist/index.d.ts",
   "keywords": [
@@ -42,12 +43,22 @@
       "types": "./globals.d.ts",
       "import": "./globals.js",
       "default": "./globals.js"
+    },
+    "./webplay": {
+      "types": "./dist/webplay/index.d.ts",
+      "import": "./dist/webplay/index.js"
     }
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "postbuild": "node ./scripts/post-build.js",
-    "test": "tsx src/bundler/test-runner.ts",
+    "test": "npm run test:bundler && npm run test:webplay",
+    "test:bundler": "tsx src/bundler/test-runner.ts",
+    "test:webplay": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "example": "ts-node examples/example.ts",
+    "load-config": "ts-node examples/load-experience-from-config.ts",
     "prepublishOnly": "npm run build",
     "prepare": "npm run build"
   },
@@ -56,13 +67,18 @@
     "url": "https://github.com/The-Sir-Community/ts-bf6-portal/issues"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.7.2",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "ts-morph": "^27.0.0",
-    "santiago-playweb-client": "github:The-Sir-Community/ts-webplay-client"
+    "@types/google-protobuf": "^3.15.12",
+    "protobufjs": "^7.5.4",
+    "ts-morph": "^27.0.0"
   },
   "bin": {
     "ts-portal-bundle": "./bin/ts-portal-bundle.mjs",
