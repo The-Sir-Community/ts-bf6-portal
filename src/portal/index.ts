@@ -1,3 +1,5 @@
+/// <reference path="./index.d.ts" />
+
 export {};
 
 type PortalConditionFunction = () => boolean;

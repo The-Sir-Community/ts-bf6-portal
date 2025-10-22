@@ -14,7 +14,7 @@
     "scripts/post-build.js",
     "battlefield_portal.proto"
   ],
-  "types": "./dist/index.d.ts",
+  "types": "./dist/src/portal/index.d.ts",
   "keywords": [
     "battlefield",
     "bf6",
@@ -32,21 +32,16 @@
     "access": "public"
   },
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
+  "main": "./dist/src/portal/index.js",
+  "module": "./dist/src/portal/index.js",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./globals": {
-      "types": "./globals.d.ts",
-      "import": "./globals.js",
-      "default": "./globals.js"
+      "types": "./dist/src/portal/index.d.ts",
+      "import": "./dist/src/portal/index.js"
     },
     "./webplay": {
-      "types": "./dist/webplay/index.d.ts",
-      "import": "./dist/webplay/index.js"
+      "types": "./dist/src/webplay/index.d.ts",
+      "import": "./dist/src/webplay/index.js"
     }
   },
   "scripts": {
@@ -84,6 +79,6 @@
     "ts-portal-bundle": "./bin/ts-portal-bundle.mjs",
     "ts-portal-bundler": "./bin/ts-portal-bundle.mjs",
     "ts-bf6-deploy": "./bin/ts-bf6-deploy.mjs",
-    "ts-bf6-strings": "./dist/strings_bundler.js"
+    "ts-bf6-strings": "./dist/src/bundler/strings-bundler.js"
   }
 }

@@ -17,9 +17,8 @@
     "isolatedModules": true
   },
   "files": [
-    "index.ts",
-    "index.d.ts",
-    "strings_bundler.ts",
+    "src/portal/index.ts",
+    "src/bundler/strings-bundler.ts",
     "src/bundler/index.ts",
     "src/bundler/bundler.ts",
     "src/bundler/cli.ts",
