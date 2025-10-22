@@ -4,10 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { bundle } from '../dist/src/bundler/bundler.js';
-import {
-  SantiagoWebPlayClient,
-  PlayElementModifier,
-} from 'santiago-playweb-client';
+import { loadExperienceFromConfig } from 'santiago-playweb-client';
 
 const TOOL_NAME = 'ts-bf6-deploy';
 const DEFAULT_CONFIG_FILE = 'ts-bf6-portal.config.json';
@@ -142,12 +139,12 @@ async function bundleIfNeeded(config, configDir, outFile) {
   return bundledScript;
 }
 
-async function applyStringsIfConfigured(client, experienceId, configDir, stringsPath, config) {
+async function compileStringsConfig(configDir, stringsPath) {
   let stringsFile = null;
   let stringsResolution = 'none';
 
   if (stringsPath === null) {
-    stringsResolution = 'disabled';
+    return null;
   } else if (stringsPath === undefined) {
     const defaultStringsCandidate = resolvePath(configDir, path.join('dist', 'strings.json'));
     if (existsSync(defaultStringsCandidate)) {
@@ -160,7 +157,7 @@ async function applyStringsIfConfigured(client, experienceId, configDir, strings
   }
 
   if (!stringsFile) {
-    return;
+    return null;
   }
 
   try {
@@ -171,29 +168,18 @@ async function applyStringsIfConfigured(client, experienceId, configDir, strings
     const displayPath = path.relative(configDir, stringsFile) || stringsFile;
     const basename = path.basename(stringsFile);
     const suffix = stringsResolution === 'auto' ? ' (auto-detected)' : '';
-    log(`Attaching strings from ${displayPath}${suffix}`);
+    log(`Compiling strings from ${displayPath}${suffix}`);
 
-    // Fetch current, modify, and update
-    const current = await client.getPlayElementDecoded({
-      id: experienceId,
-      includeDenied: config.includeDenied ?? false,
-    });
-
-    const modifier = new PlayElementModifier(current);
-    modifier.setStrings(stringsContent, basename);
-
-    await client.updatePlayElement({
-      id: experienceId,
-      ...modifier.build(),
-    });
-
-    log('Strings attachment completed');
+    return {
+      [basename]: stringsContent,
+    };
   } catch (error) {
     if (stringsResolution === 'explicit') {
-      throw new Error(`Failed to attach strings: ${error.message}`);
+      throw new Error(`Failed to compile strings: ${error.message}`);
     }
     // Auto-detection failures are non-fatal
-    log(`Note: Could not attach strings (${error.message})`);
+    log(`Note: Could not compile strings (${error.message})`);
+    return null;
   }
 }
 
@@ -249,75 +235,58 @@ async function main() {
     delete config.bundle;
   }
 
-  // Initialize client
-  const client = new SantiagoWebPlayClient({ sessionId });
+  // Resolve experience ID from config, env file, or environment
+  const experienceId = config.id || config.experienceId || process.env[EXPERIENCE_ID_ENV_VAR];
+  if (!experienceId) {
+    throw new Error(
+      `Experience ID is required. Provide it in one of these ways:\n` +
+      `  1. In config file as "id" or "experienceId"\n` +
+      `  2. In .env file as ${EXPERIENCE_ID_ENV_VAR}=<experience-id>\n` +
+      `  3. As an environment variable: export ${EXPERIENCE_ID_ENV_VAR}=<experience-id>`
+    );
+  }
 
   try {
-    // Apply configuration using upstream client
-    const experienceId = config.id || config.experienceId || process.env[EXPERIENCE_ID_ENV_VAR];
-    if (!experienceId) {
-      throw new Error(
-        `Experience ID is required. Provide it in one of these ways:\n` +
-        `  1. In config file as "id" or "experienceId"\n` +
-        `  2. In .env file as ${EXPERIENCE_ID_ENV_VAR}=<experience-id>\n` +
-        `  3. As an environment variable: export ${EXPERIENCE_ID_ENV_VAR}=<experience-id>`
-      );
-    }
-
     log(`Deploying to experience: ${experienceId}`);
 
-    // Fetch current experience
-    const current = await client.getPlayElementDecoded({
-      id: experienceId,
-      includeDenied: config.includeDenied ?? false,
-    });
-
-    // Create modifier and apply all config updates
-    const modifier = new PlayElementModifier(current);
-
-    if (config.name) {
-      log(`Setting name: ${config.name}`);
-      modifier.setName(config.name);
-    }
-
-    if (config.description) {
-      log(`Setting description: ${config.description}`);
-      modifier.setDescription(config.description);
-    }
-
-    if (config.published !== undefined) {
-      log(`Setting publish state: ${config.published ? 'PUBLISHED' : 'DRAFT'}`);
-      modifier.setPublishState(config.published ? 2 : 1);
-    }
-
-    // Set script/code
+    // Handle script/code configuration
     if (config.script?.inline) {
       log(`Updating TypeScript code (${config.script.inline.length} bytes)`);
-      modifier.setTypeScriptCode(config.script.inline);
     } else if (config.script?.code) {
       log(`Updating TypeScript code (${config.script.code.length} bytes)`);
-      modifier.setTypeScriptCode(config.script.code);
     } else if (config.script?.file) {
       const scriptPath = resolvePath(configDir, config.script.file);
       const scriptContent = await readFile(scriptPath, 'utf8');
       log(`Updating TypeScript code from ${config.script.file} (${scriptContent.length} bytes)`);
-      modifier.setTypeScriptCode(scriptContent);
+      config.script = { inline: scriptContent };
     }
 
-    // Send update
+    // Compile strings configuration before API call
+    const stringsConfig = await compileStringsConfig(configDir, stringsPath);
+    if (stringsConfig) {
+      // Merge strings into config
+      if (!config.strings) {
+        config.strings = {};
+      }
+      Object.assign(config.strings, stringsConfig);
+    }
+
+    // Single API call with complete configuration
     log('Sending update to Santiago WebPlay API');
-    const updated = await client.updatePlayElement({
-      id: experienceId,
-      ...modifier.build(),
+    const updated = await loadExperienceFromConfig({
+      sessionId,
+      playElementId: experienceId,
+      config,
+      includeDenied: config.includeDenied ?? false,
     });
 
     log('Deployment succeeded');
-    if (updated.playElement?.name) {
+    if (updated?.playElement?.name) {
       log(`Experience name: ${updated.playElement.name}`);
     }
-
-    // Handle strings separately if configured
-    await applyStringsIfConfigured(client, experienceId, configDir, stringsPath, config);
+    if (stringsConfig) {
+      log('Strings attachment completed');
+    }
   } catch (error) {
     if (error.message?.toLowerCase().includes('403') ||
         error.message?.toLowerCase().includes('unauthorized') ||
