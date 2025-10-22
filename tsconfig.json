@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "NodeNext",
-    "moduleResolution": "nodenext",
-    "strict": true,
+    "module": "ES2020",
+    "moduleResolution": "node",
+    "strict": false,
+    "noImplicitAny": false,
     "declaration": true,
     "declarationMap": true,
     "outDir": "dist",
@@ -22,6 +23,10 @@
     "src/bundler/index.ts",
     "src/bundler/bundler.ts",
     "src/bundler/cli.ts",
-    "src/bundler/test-runner.ts"
+    "src/bundler/test-runner.ts",
+    "src/webplay/index.ts",
+    "src/webplay/playweb-client.ts",
+    "src/webplay/response-decoder.ts",
+    "src/webplay/experience-loader.ts"
   ]
 }

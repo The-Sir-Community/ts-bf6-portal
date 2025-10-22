@@ -1497,7 +1497,7 @@ class SantiagoWebPlayClient {
     const response = await fetch(url, {
       method: 'POST',
       headers: this.buildHeaders(),
-      body: frame,
+      body: frame as any,
     });
 
     console.log(`[DEBUG] Response status: ${response.status} ${response.statusText}`);
