@@ -74,7 +74,7 @@ export {
   type MutatorKind,
   type BlazeGameSettings,
   type GameServerJoinabilitySettings,
-} from './playweb-client';
+} from './playweb-client.js';
 
 // Re-export response decoder utilities
 export {
@@ -83,7 +83,7 @@ export {
   extractScript,
   hasCompilationErrors,
   getCompilationErrors,
-} from './response-decoder';
+} from './response-decoder.js';
 
 // Re-export experience loader utilities
 export {
@@ -107,4 +107,4 @@ export {
   type AssetRestriction,
   type LoadExperienceOptions,
   type DownloadExperienceOptions,
-} from './experience-loader';
+} from './experience-loader.js';

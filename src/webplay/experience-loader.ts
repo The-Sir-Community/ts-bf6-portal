@@ -20,7 +20,7 @@ import {
   type MapEntry,
   type Mutator,
   type MutatorKind,
-} from './playweb-client';
+} from './playweb-client.js';
 
 // ============================================================================
 // Asset Category Types and UUID Mapping

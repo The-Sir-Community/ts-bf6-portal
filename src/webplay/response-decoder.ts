@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as protobuf from 'protobufjs';
-import { PlayElementResponse } from './playweb-client';
+import { PlayElementResponse } from './playweb-client.js';
 
 const PROTO_PATH = path.resolve(__dirname, '../battlefield_portal.proto');
 let protoRootPromise: Promise<protobuf.Root> | null = null;
