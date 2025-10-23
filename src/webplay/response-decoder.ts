@@ -1,11 +1,17 @@
 import * as path from 'path';
-import * as protobuf from 'protobufjs';
+import protobufjs from 'protobufjs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import { PlayElementResponse } from './playweb-client.js';
 
-const PROTO_PATH = path.resolve(__dirname, '../battlefield_portal.proto');
-let protoRootPromise: Promise<protobuf.Root> | null = null;
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-const DECODE_OPTIONS: protobuf.IConversionOptions = {
+const PROTO_PATH = path.resolve(__dirname, '../../battlefield_portal.proto');
+let protoRootPromise: Promise<protobufjs.Root> | null = null;
+
+const DECODE_OPTIONS: protobufjs.IConversionOptions = {
   longs: String,
   enums: Number,
   defaults: true,
@@ -14,9 +20,9 @@ const DECODE_OPTIONS: protobuf.IConversionOptions = {
   oneofs: true,
 };
 
-async function loadProtoRoot(): Promise<protobuf.Root> {
+async function loadProtoRoot(): Promise<protobufjs.Root> {
   if (!protoRootPromise) {
-    protoRootPromise = protobuf.load(PROTO_PATH);
+    protoRootPromise = protobufjs.load(PROTO_PATH);
   }
   return protoRootPromise;
 }

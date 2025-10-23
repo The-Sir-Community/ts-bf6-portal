@@ -1,6 +1,12 @@
 import * as path from 'path';
-import * as protobuf from 'protobufjs';
+import protobufjs from 'protobufjs';
 import * as crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Binary writer for protobuf encoding
 class BinaryWriter {
@@ -34,9 +40,9 @@ class BinaryWriter {
 }
 
 const PROTO_PATH = path.resolve(__dirname, '../../battlefield_portal.proto');
-let protoRootPromise: Promise<protobuf.Root> | null = null;
+let protoRootPromise: Promise<protobufjs.Root> | null = null;
 
-const PLAY_ELEMENT_TO_OBJECT_OPTIONS: protobuf.IConversionOptions = {
+const PLAY_ELEMENT_TO_OBJECT_OPTIONS: protobufjs.IConversionOptions = {
   longs: String,
   enums: Number,
   defaults: true,
@@ -45,9 +51,9 @@ const PLAY_ELEMENT_TO_OBJECT_OPTIONS: protobuf.IConversionOptions = {
   oneofs: true,
 };
 
-async function loadProtoRoot(): Promise<protobuf.Root> {
+async function loadProtoRoot(): Promise<protobufjs.Root> {
   if (!protoRootPromise) {
-    protoRootPromise = protobuf.load(PROTO_PATH);
+    protoRootPromise = protobufjs.load(PROTO_PATH);
   }
   return protoRootPromise;
 }
