@@ -868,6 +868,8 @@ export interface UpdatePlayElementOptions {
   id: string;
   playElement: PlayElement;
   playElementDesign: PlayElementDesign;
+  /** Optional: current play element state to avoid re-fetching. If not provided, will be fetched. */
+  current?: PlayElementResponse;
 }
 
 // ============================================================================
@@ -1605,15 +1607,19 @@ class SantiagoWebPlayClient {
    * ```
    */
   async updatePlayElement(options: UpdatePlayElementOptions): Promise<PlayElementResponse> {
-    let { id, playElement, playElementDesign } = options;
+    let { id, playElement, playElementDesign, current: providedCurrent } = options;
 
     // Early validation
     if (!playElement || !playElementDesign) {
       throw new Error('Both playElement and playElementDesign are required for update.');
     }
 
-    // Step 1: Fetch current state to determine which attachments to delete
-    const current = await this.getPlayElementDecoded({ id, includeDenied: true });
+    // Step 1: Get current state to determine which attachments to delete
+    // Use provided current state or fetch if not available
+    let current = providedCurrent;
+    if (!current) {
+      current = await this.getPlayElementDecoded({ id, includeDenied: true });
+    }
 
     // Step 2: Determine which attachments to delete
     // Attachments to keep: those referenced in new map rotation + TypeScript attachment

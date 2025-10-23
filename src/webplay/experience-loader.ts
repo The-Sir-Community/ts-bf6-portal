@@ -1086,6 +1086,7 @@ export async function loadExperienceFromConfig(
     const updated = await client.updatePlayElement({
       id: finalPlayElementId,
       ...updateData,
+      current, // Pass the current state to avoid re-fetching
     });
 
     // Display results
