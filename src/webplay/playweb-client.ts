@@ -39,7 +39,7 @@ class BinaryWriter {
   }
 }
 
-const PROTO_PATH = path.resolve(__dirname, '../../battlefield_portal.proto');
+const PROTO_PATH = path.resolve(__dirname, '../../../battlefield_portal.proto');
 let protoRootPromise: Promise<protobufjs.Root> | null = null;
 
 const PLAY_ELEMENT_TO_OBJECT_OPTIONS: protobufjs.IConversionOptions = {
@@ -67,9 +67,23 @@ function encodeGrpcWebFrame(payload: Uint8Array): Uint8Array {
   return frame;
 }
 
-function unwrapGrpcWebMessage(data: Uint8Array): Uint8Array {
+function unwrapGrpcWebMessage(data: Uint8Array, headers?: Headers): Uint8Array {
   if (data.length < 5) {
     if (data.length === 0) {
+      // Check if there are gRPC trailers in HTTP headers (valid for responses with no message body)
+      if (headers) {
+        const grpcStatus = headers.get('grpc-status');
+        const grpcMessage = headers.get('grpc-message');
+
+        if (grpcStatus) {
+          if (grpcStatus !== '0') {
+            throw new Error(`gRPC error ${grpcStatus}: ${grpcMessage || 'Unknown error'}`);
+          }
+          // grpc-status: 0 means success, return empty message
+          return new Uint8Array(0);
+        }
+      }
+
       throw new Error('Invalid gRPC-Web response: empty response (0 bytes). This usually indicates an authentication failure - check your session ID.');
     }
     throw new Error(`Invalid gRPC-Web response: too short (got ${data.length} bytes, need at least 5)`);
@@ -1519,7 +1533,14 @@ class SantiagoWebPlayClient {
     const responseData = new Uint8Array(await response.arrayBuffer());
     console.log(`[DEBUG] Response frame size: ${responseData.length} bytes`);
 
-    return unwrapGrpcWebMessage(responseData);
+    // Debug: log gRPC trailers in response headers
+    const grpcStatus = response.headers.get('grpc-status');
+    const grpcMessage = response.headers.get('grpc-message');
+    if (grpcStatus || grpcMessage) {
+      console.log(`[DEBUG] gRPC trailers:`, { grpcStatus, grpcMessage });
+    }
+
+    return unwrapGrpcWebMessage(responseData, response.headers);
   }
 
   /**

@@ -8,7 +8,7 @@ import { PlayElementResponse } from './playweb-client.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PROTO_PATH = path.resolve(__dirname, '../../battlefield_portal.proto');
+const PROTO_PATH = path.resolve(__dirname, '../../../battlefield_portal.proto');
 let protoRootPromise: Promise<protobufjs.Root> | null = null;
 
 const DECODE_OPTIONS: protobufjs.IConversionOptions = {
