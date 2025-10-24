@@ -6,98 +6,140 @@ Tooling to simplify BF6 Portal custom experiences (modding). Portal APIs themsel
 
 :warning: EXPERIMENTAL :warning: 
 
-The package exposes a `ts-bf6-deploy` CLI that bundles your script and uploads it to a Portal experience.
+## Quick Start
 
-1. Create a `ts-bf6-portal.config.json` in your project (copy `ts-bf6-portal.config.sample.json` to get started):
+1. Obtain your Portal session ID from https://portal.battlefield.com/. Set it via one of:
 
-   **Full Featured Example (with Maps, Rules, and Settings):**
-   ```json
-   {
-     "id": "your-experience-uuid",
-     "name": "My Custom Game Mode",
-     "description": "A custom Battlefield Portal experience",
-     "script": {
-       "file": "src/index.ts"
-     },
-     "maps": [
-       {
-         "map": "MP_Battery",
-         "name": "Iberian Offensive",
-         "rounds": 2,
-         "teams": [32, 32],
-         "spectators": 4,
-         "balancing": "skill",
-         "bots": [
-           { "team": 1, "count": 16, "type": "fill" },
-           { "team": 2, "count": 16, "type": "fill" }
-         ],
-         "rules": [
-           { "name": "FriendlyFireDamageReflectionEnabled", "value": false },
-           { "name": "ProjectileSpeedMultiplier", "value": 1.5 },
-           { "name": "MaxPlayerCount_PerTeam", "value": 32 }
-         ],
-         "joinability": {
-           "joinInProgress": true,
-           "openJoin": true,
-           "invites": true
-         },
-         "matchmaking": false,
-         "spatial": {
-           "file": "spatial/MP_Battery_objects.json"
-         }
-       },
-       {
-         "map": "MP_Dumbo",
-         "name": "High Speed Manhattan",
-         "rounds": 1,
-         "teams": [32, 32],
-         "balancing": "skill",
-         "bots": [
-           { "team": 1, "count": 12 },
-           { "team": 2, "count": 12 }
-         ],
-         "rules": [
-           { "name": "ProjectileSpeedMultiplier", "value": 2.5 }
-         ]
-       }
-     ],
-     "rotation": "loop"
-   }
+   Option A: Create a `.env` file
+   ```
+   BF_PORTAL_SESSION_ID=your-session-id
    ```
 
-   **Configuration Notes:**
-   - `id` or `experienceId` (old) - Your experience UUID (required)
-   - `name` - Experience name (optional)
-   - `description` - Experience description (optional)
-   - `published` - Set to `true` to publish, `false` for draft (optional)
-   - `script` - Inline TypeScript code via `file`, `code`, or `inline` (optional if `bundle` is used)
-   - `bundle` - Bundler configuration (optional if `script.file` is used)
-     - `entry` - Entry point for bundling
-     - `outFile` - Output path (defaults to `dist/portal-bundle.ts`)
-     - `tsconfig` - tsconfig.json path (optional)
-   - `maps` - Array of map configurations (optional)
-     - `map` - Map code like `MP_Battery`, `MP_Dumbo`, etc.
-     - `rounds` - Number of rounds (default: 1)
-     - `teams` - Array of team sizes, e.g., `[32, 32]` for 32v32 (default: [32, 32])
-     - `balancing` - `none`, `skill`, or `squad` (default: skill)
-     - `bots` - Bot configuration with team, count, and type (`fill` or `fixed`)
-     - `rules` - Game rules/mutators with name and value
-     - `joinability` - Join settings (joinInProgress, openJoin, invites)
-     - `matchmaking` - Enable/disable matchmaking (default: false)
-     - `spatial` - Custom 3D object placement from file
-   - `rotation` - Map rotation: `loop`, `shuffle`, or `once` (default: loop)
-   - `includeDenied` - Set to `true` to access unpublished experiences (optional)
-
-2. Obtain your `x-gateway-session-id` from https://portal.battlefield.com/ and export it:
-
+   Option B: Export as environment variable
    ```bash
-   export TS_BF6_GATEWAY_SESSION_ID=your-session-id
+   export BF_PORTAL_SESSION_ID=your-session-id
    ```
 
-3. Run the deploy script from your project root:
+2. Create a `ts-bf6-portal.config.json` configuration file
 
+3. Deploy with:
    ```bash
-   npx ts-bf6-deploy
+   npx ts-bf6-deploy [--config <path>] [--strings <path>]
    ```
 
-   Use `--config <path>` if your configuration lives elsewhere.
+## Configuration File
+
+Create `ts-bf6-portal.config.json` in your project:
+
+```json
+{
+  "id": "your-experience-uuid",
+  "name": "Experience Name",
+  "description": "Optional description",
+  "published": false,
+  "script": {
+    "file": "src/index.ts"
+  },
+  "maps": [
+    {
+      "map": "MP_Battery",
+      "teams": [32, 32],
+      "balancing": "skill",
+      "rules": [
+        { "name": "FriendlyFireDamageReflectionEnabled", "value": false }
+      ]
+    }
+  ],
+  "rotation": "loop"
+}
+```
+
+### Configuration Fields
+
+- `id` - Experience UUID (required for deployment)
+- `name` - Experience name (required)
+- `description` - Experience description (optional)
+- `published` - Boolean, set to true to publish (optional, defaults to false)
+- `script` - TypeScript code:
+  - `file`: Path to TypeScript file
+  - `code` or `inline`: Inline code string
+- `bundle` - Alternative to `script`, bundles an entry point:
+  - `entry`: Entry file path
+  - `outFile`: Output path (optional, defaults to `dest/portal-bundle.ts`)
+  - `tsconfig`: Path to tsconfig.json (optional)
+- `maps` - Array of map configurations:
+  - `map`: Map code (e.g., `MP_Battery`, `MP_Dumbo`)
+  - `teams`: Array of team sizes (e.g., `[32, 32]`)
+  - `rounds`: Number of rounds (default: 1)
+  - `balancing`: `none`, `skill`, or `squad` (default: `skill`)
+  - `bots`: Bot configuration with `team`, `count`, `type` (`fill` or `fixed`)
+  - `rules`: Mutator rules with `name` and `value`
+  - `joinability`: Join settings (`joinInProgress`, `openJoin`, `invites`)
+  - `matchmaking`: Boolean (default: false)
+  - `spatial`: Spatial data from file or inline
+- `globalRules` - Experience-wide mutators (optional)
+- `restrictions` - Asset restrictions (weapons, vehicles, etc.) (optional)
+- `rotation` - Map rotation: `loop`, `shuffle`, or `once` (default: `loop`)
+- `strings` - Localization strings:
+  - `file`: Path to strings JSON file
+  - `data`: Inline strings object
+
+## Bundler
+
+The bundler compiles TypeScript entry points into deployable scripts:
+
+```bash
+npx ts-portal-bundle --entry src/index.ts --out dist/bundle.ts [--tsconfig tsconfig.json]
+```
+
+Or configure in `ts-bf6-portal.config.json`:
+
+```json
+{
+  "bundle": {
+    "entry": "src/index.ts",
+    "outFile": "dist/portal-bundle.ts",
+    "tsconfig": "tsconfig.json"
+  }
+}
+```
+
+## Strings (Localization)
+
+Bundle localization strings via:
+
+```bash
+npx ts-bf6-deploy --strings dist/strings.json
+```
+
+The `--strings` flag loads a JSON file and attaches it to the experience. Use `--no-strings` to skip automatic loading.
+
+## CLI Tools for Asset Discovery
+
+### List Available Mutators
+
+```bash
+npx ts-bf6-list-mutators
+```
+
+Returns all mutators available in the Portal, with their names and valid value ranges. Use these names in the `rules` field of your config.
+
+### List Available Asset Categories
+
+```bash
+npx ts-bf6-list-asset-categories
+```
+
+Returns asset categories (weapons, vehicles, gadgets, etc.) for use in the `restrictions` field.
+
+## Deploy CLI
+
+```bash
+npx ts-bf6-deploy [options]
+```
+
+Options:
+- `--config <path>` - Path to config file (default: `ts-bf6-portal.config.json`)
+- `--env-file <path>` - Path to .env file (default: `.env` if present)
+- `--strings <path>` - Attach Strings.json file
+- `--no-strings` - Disable automatic strings loading
