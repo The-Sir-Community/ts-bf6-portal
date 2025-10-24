@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -271,24 +271,12 @@ async function main() {
       Object.assign(config.strings, stringsConfig);
     }
 
-    // Write the final config back to a temporary file if we made modifications
-    // (script file resolution and strings compilation)
-    let finalConfigPath = resolvedConfigPath;
-    const needsModifications = bundledCode || stringsConfig;
-
-    if (needsModifications) {
-      // Create a temporary config file with resolved content
-      const tempConfigPath = path.join(configDir, '.deploy-config-temp.json');
-      await mkdir(path.dirname(tempConfigPath), { recursive: true });
-      await writeFile(tempConfigPath, JSON.stringify(config, null, 2));
-      finalConfigPath = tempConfigPath;
-    }
-
-    // Single API call with complete configuration
+    // Single API call with complete configuration (pass config object directly)
     log('Sending update to Santiago WebPlay API');
-    const updated = await loadExperienceFromConfig(finalConfigPath, {
+    const updated = await loadExperienceFromConfig(config, {
       playElementId: experienceId,
       sessionId,
+      configDir, // Pass the config directory for resolving relative file paths
     });
 
     log('Deployment succeeded');

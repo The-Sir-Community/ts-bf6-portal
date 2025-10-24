@@ -353,6 +353,8 @@ export interface LoadExperienceOptions {
   playElementId?: string;
   /** Console logging level: 'verbose', 'normal', or 'silent' */
   logLevel?: 'verbose' | 'normal' | 'silent';
+  /** Base directory for resolving relative file paths (only used when passing a config object, not a file path) */
+  configDir?: string;
 }
 
 // ============================================================================
@@ -988,8 +990,28 @@ function buildMapRotation(maps: MapConfig[], configDir: string, options: LoadExp
  * await loadExperienceFromConfig('config/my-experience.json');
  * ```
  */
+/**
+ * Load an experience from a configuration file path
+ */
 export async function loadExperienceFromConfig(
   configPath: string,
+  options?: LoadExperienceOptions
+): Promise<void>;
+
+/**
+ * Load an experience from a configuration object
+ */
+export async function loadExperienceFromConfig(
+  config: ExperienceConfig,
+  options?: LoadExperienceOptions
+): Promise<void>;
+
+/**
+ * Load an experience from either a configuration file path or a configuration object.
+ * This is the implementation for the overloaded function.
+ */
+export async function loadExperienceFromConfig(
+  configPathOrConfig: string | ExperienceConfig,
   options: LoadExperienceOptions = {}
 ): Promise<void> {
   const logLevel = options.logLevel || 'normal';
@@ -1000,8 +1022,19 @@ export async function loadExperienceFromConfig(
   log('╚═══════════════════════════════════════════════════════════════╝', 'info', opts);
 
   // Load and parse configuration
-  const config = loadConfigFile(configPath);
-  const configDir = path.dirname(path.resolve(configPath));
+  let config: ExperienceConfig;
+  let configDir: string;
+
+  if (typeof configPathOrConfig === 'string') {
+    // Load from file path
+    config = loadConfigFile(configPathOrConfig);
+    configDir = path.dirname(path.resolve(configPathOrConfig));
+  } else {
+    // Use provided config object
+    config = configPathOrConfig;
+    // Use provided configDir option, or fall back to current working directory
+    configDir = options.configDir ? path.resolve(options.configDir) : process.cwd();
+  }
 
   log(`📄 Loaded configuration: ${config.name}`, 'info', opts);
   if (config.description) {
