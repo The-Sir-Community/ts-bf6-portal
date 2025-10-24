@@ -2064,6 +2064,189 @@ class SantiagoWebPlayClient {
     return 'unknown type';
   }
 
+  /**
+   * Get a mutator definition by name from the current blueprint
+   */
+  async getMutatorByName(name: string): Promise<any | null> {
+    const mutators = await this.listAvailableMutators();
+    return mutators.get(name) || null;
+  }
+
+  /**
+   * Get valid values/constraints for a specific mutator
+   */
+  async getValidValuesFor(mutatorName: string): Promise<any> {
+    const mutator = await this.getMutatorByName(mutatorName);
+    if (!mutator) {
+      return null;
+    }
+
+    const kind = mutator.kind;
+    if (!kind) return null;
+
+    // Extract value constraints based on mutator type
+    if (kind.includes('integer')) {
+      const match = kind.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+      if (match) {
+        return { type: 'integer', min: parseInt(match[1]), max: parseInt(match[2]) };
+      }
+      if (kind.includes('specific values')) {
+        return { type: 'integer', constraint: 'specific values only' };
+      }
+    }
+    if (kind.includes('float')) {
+      const match = kind.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+      if (match) {
+        return { type: 'float', min: parseFloat(match[1]), max: parseFloat(match[2]) };
+      }
+    }
+    if (kind.includes('boolean')) {
+      return { type: 'boolean', values: [true, false] };
+    }
+    if (kind.includes('string')) {
+      return { type: 'string' };
+    }
+
+    return { type: 'unknown' };
+  }
+
+  /**
+   * Get detailed description of a mutator including its purpose and constraints
+   */
+  async describeMutator(name: string): Promise<string> {
+    const mutator = await this.getMutatorByName(name);
+    if (!mutator) {
+      return `Mutator '${name}' not found in blueprint`;
+    }
+
+    let description = `\n📋 ${mutator.name}\n`;
+    description += `   ID: ${mutator.id}\n`;
+    description += `   Category: ${mutator.category || '(no category)'}\n`;
+    description += `   Type: ${mutator.kind}\n`;
+
+    const constraints = await this.getValidValuesFor(name);
+    if (constraints) {
+      description += `   Constraints: `;
+      if (constraints.min !== undefined && constraints.max !== undefined) {
+        description += `${constraints.min} - ${constraints.max}`;
+      } else if (constraints.values) {
+        description += constraints.values.join(', ');
+      } else if (constraints.constraint) {
+        description += constraints.constraint;
+      } else {
+        description += mutator.kind;
+      }
+      description += '\n';
+    }
+
+    return description;
+  }
+
+  /**
+   * Validate mutators against the current blueprint before sending to server
+   * Returns validation results with errors and warnings
+   */
+  async validateMutatorsAgainstBlueprint(mutatorsToCheck: any[]): Promise<{
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    summary: string;
+  }> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (!mutatorsToCheck || mutatorsToCheck.length === 0) {
+      return {
+        valid: true,
+        errors: [],
+        warnings: [],
+        summary: 'No mutators to validate'
+      };
+    }
+
+    try {
+      const availableMutators = await this.listAvailableMutators();
+
+      for (const mutator of mutatorsToCheck) {
+        const mutatorName = mutator.name;
+
+        // Check if mutator exists in blueprint
+        const blueprintMutator = availableMutators.get(mutatorName);
+        if (!blueprintMutator) {
+          errors.push(`Mutator '${mutatorName}' is not available in the scheduled Blueprint`);
+          continue;
+        }
+
+        // Check if ID matches (if provided)
+        if (mutator.id && mutator.id !== blueprintMutator.id) {
+          warnings.push(`Mutator '${mutatorName}' ID mismatch: expected '${blueprintMutator.id}', got '${mutator.id}'`);
+        }
+
+        // Validate values if present
+        if (mutator.kind) {
+          // For sparse mutators, validate per-team values
+          if (blueprintMutator.kind.includes('sparse')) {
+            if (mutator.kind.mutatorSparseBoolean) {
+              const sparseValues = mutator.kind.mutatorSparseBoolean.sparse_values;
+              if (sparseValues) {
+                for (const entry of sparseValues) {
+                  if (typeof entry.value !== 'boolean') {
+                    errors.push(`Mutator '${mutatorName}': sparse boolean value must be true/false, got ${entry.value}`);
+                  }
+                }
+              }
+            } else if (mutator.kind.mutatorSparseInt) {
+              const intVal = blueprintMutator.kind.match(/(\d+)\s*-\s*(\d+)/);
+              if (intVal) {
+                const min = parseInt(intVal[1]), max = parseInt(intVal[2]);
+                const sparseValues = mutator.kind.mutatorSparseInt.sparse_values;
+                if (sparseValues) {
+                  for (const entry of sparseValues) {
+                    if (entry.value < min || entry.value > max) {
+                      errors.push(`Mutator '${mutatorName}' value ${entry.value} is out of range [${min}, ${max}]`);
+                    }
+                  }
+                }
+              }
+            } else if (mutator.kind.mutatorSparseFloat) {
+              const floatVal = blueprintMutator.kind.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+              if (floatVal) {
+                const min = parseFloat(floatVal[1]), max = parseFloat(floatVal[2]);
+                const sparseValues = mutator.kind.mutatorSparseFloat.sparse_values;
+                if (sparseValues) {
+                  for (const entry of sparseValues) {
+                    if (entry.value < min || entry.value > max) {
+                      errors.push(`Mutator '${mutatorName}' value ${entry.value} is out of range [${min}, ${max}]`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const valid = errors.length === 0;
+      let summary = '';
+      if (valid && warnings.length === 0) {
+        summary = `✅ All ${mutatorsToCheck.length} mutator(s) are valid`;
+      } else if (valid) {
+        summary = `✅ All mutators are valid (${warnings.length} warning(s))`;
+      } else {
+        summary = `❌ Validation failed: ${errors.length} error(s), ${warnings.length} warning(s)`;
+      }
+
+      return { valid, errors, warnings, summary };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : String(error)],
+        warnings: [],
+        summary: '❌ Validation error'
+      };
+    }
+  }
+
 }
 
 export {

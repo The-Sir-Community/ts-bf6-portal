@@ -79,6 +79,8 @@
     "ts-portal-bundle": "./bin/ts-portal-bundle.mjs",
     "ts-portal-bundler": "./bin/ts-portal-bundle.mjs",
     "ts-bf6-deploy": "./bin/ts-bf6-deploy.mjs",
+    "ts-bf6-list-mutators": "./bin/ts-bf6-list-mutators.mjs",
+    "ts-bf6-validate-config": "./bin/ts-bf6-validate-config.mjs",
     "ts-bf6-strings": "./dist/src/bundler/strings-bundler.js"
   }
 }
