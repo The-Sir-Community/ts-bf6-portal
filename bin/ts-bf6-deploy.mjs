@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';

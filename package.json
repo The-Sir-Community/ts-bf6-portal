@@ -5,11 +5,8 @@
   "license": "Proprietary",
   "files": [
     "dist",
-    "index.d.ts",
     "README.md",
     "LICENSE",
-    "globals.d.ts",
-    "globals.js",
     "bin",
     "scripts/post-build.js",
     "battlefield_portal.proto"
