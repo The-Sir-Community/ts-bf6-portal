@@ -1984,8 +1984,8 @@ class SantiagoWebPlayClient {
       const mutators = new Map();
       const mutatorList = availableGameData.mutators;
 
-      console.log(`\n✅ Found ${mutatorList.length} available mutators:\n`);
-      console.log('═'.repeat(100));
+      //console.log(`\n✅ Found ${mutatorList.length} available mutators:\n`);
+      //console.log('═'.repeat(100));
 
       mutatorList.forEach((mut: any, index: number) => {
         const mutatorInfo = {
@@ -1997,13 +1997,13 @@ class SantiagoWebPlayClient {
 
         mutators.set(mut.name, mutatorInfo);
 
-        console.log(`\n${index + 1}. ${mut.name}`);
-        console.log(`   ID: ${mut.id}`);
-        console.log(`   Category: ${mut.category || '(no category)'}`);
-        console.log(`   Type: ${this.describeMutatorKind(mut.kind)}`);
+        // console.log(`\n${index + 1}. ${mut.name}`);
+        // console.log(`   ID: ${mut.id}`);
+        // console.log(`   Category: ${mut.category || '(no category)'}`);
+        // console.log(`   Type: ${this.describeMutatorKind(mut.kind)}`);
       });
 
-      console.log('\n' + '═'.repeat(100) + '\n');
+      //console.log('\n' + '═'.repeat(100) + '\n');
       return mutators;
     } catch (error) {
       console.error('Error fetching available mutators:', error instanceof Error ? error.message : error);
@@ -2182,11 +2182,32 @@ class SantiagoWebPlayClient {
           warnings.push(`Mutator '${mutatorName}' ID mismatch: expected '${blueprintMutator.id}', got '${mutator.id}'`);
         }
 
+        // Validate configuration type matches blueprint (check raw config properties first)
+        if (blueprintMutator.kind.includes('sparse')) {
+          // This is a sparse/per-team mutator - must use 'perTeamValues' in config, not 'value'
+          if (mutator.value !== undefined && mutator.perTeamValues === undefined) {
+            errors.push(`Mutator '${mutatorName}' is a per-team (sparse) mutator and must use 'perTeamValues' in config, not 'value'. Expected config format: { "name": "${mutatorName}", "perTeamValues": [team1Value, team2Value, ...] }`);
+          }
+        } else {
+          // This is a global (non-sparse) mutator - must use 'value' in config, not 'perTeamValues'
+          if (mutator.perTeamValues !== undefined && mutator.value === undefined) {
+            errors.push(`Mutator '${mutatorName}' is a global mutator and must use 'value' in config, not 'perTeamValues'. Expected config format: { "name": "${mutatorName}", "value": ... }`);
+          }
+        }
+
         // Validate values if present
         if (mutator.kind) {
           // For sparse mutators, validate per-team values
           if (blueprintMutator.kind.includes('sparse')) {
-            if (mutator.kind.mutatorSparseBoolean) {
+            // Check if the mutator is actually sparse
+            const isSparse = mutator.kind.mutatorSparseBoolean || mutator.kind.mutatorSparseInt || mutator.kind.mutatorSparseFloat;
+
+            if (!isSparse) {
+              // Mutator is sparse in blueprint but configured as non-sparse
+              const expectedType = blueprintMutator.kind.replace('sparse ', '');
+              const actualType = mutator.kind.mutatorBoolean ? 'boolean' : mutator.kind.mutatorInt ? 'int' : mutator.kind.mutatorFloat ? 'float' : 'unknown';
+              errors.push(`Mutator '${mutatorName}' type mismatch: expected ${expectedType} but got ${actualType}. Sparse mutators must use 'perTeamValues' in config, not 'value'.`);
+            } else if (mutator.kind.mutatorSparseBoolean) {
               const sparseValues = mutator.kind.mutatorSparseBoolean.sparse_values;
               if (sparseValues) {
                 for (const entry of sparseValues) {

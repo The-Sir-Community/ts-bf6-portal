@@ -746,7 +746,7 @@ function convertAssetCategoryToRestriction(category: any, logUnmapped = false): 
 /**
  * Build mutator from rule configuration (global or sparse)
  */
-function buildMutator(ruleConfig: RuleConfig): Mutator {
+function buildMutator(ruleConfig: RuleConfig, availableMutators?: Map<string, any>): Mutator {
   // Handle sparse/per-team rules
   if (isSparseRule(ruleConfig)) {
     const rule = ruleConfig as SparseRuleConfig;
@@ -785,7 +785,17 @@ function buildMutator(ruleConfig: RuleConfig): Mutator {
       }
     }
 
-    return sparseMutator(rule.name, perTeamValues, defaultValue, rule.category);
+    const mutator = sparseMutator(rule.name, perTeamValues, defaultValue, rule.category);
+
+    // Assign ID from blueprint if available
+    if (availableMutators) {
+      const blueprintMutator = availableMutators.get(rule.name);
+      if (blueprintMutator && blueprintMutator.id) {
+        mutator.id = blueprintMutator.id;
+      }
+    }
+
+    return mutator;
   }
 
   // Handle global rules
@@ -804,18 +814,27 @@ function buildMutator(ruleConfig: RuleConfig): Mutator {
     kind.mutatorString = { value: rule.value };
   }
 
+  // Try to get ID from config first, then from blueprint if available
+  let id = rule.id;
+  if (!id && availableMutators) {
+    const blueprintMutator = availableMutators.get(rule.name);
+    if (blueprintMutator && blueprintMutator.id) {
+      id = blueprintMutator.id;
+    }
+  }
+
   return {
     name: rule.name,
     category: rule.category,
     kind,
-    id: rule.id,
+    id,
   };
 }
 
 /**
  * Build map rotation from configuration
  */
-function buildMapRotation(maps: MapConfig[], configDir: string, options: LoadExperienceOptions): MapEntry[] {
+function buildMapRotation(maps: MapConfig[], configDir: string, options: LoadExperienceOptions, availableMutators?: Map<string, any>): MapEntry[] {
   log(`\n🗺️  Building map rotation with ${maps.length} map(s):`, 'info', options);
 
   return maps.map((mapConfig, index) => {
@@ -871,7 +890,7 @@ function buildMapRotation(maps: MapConfig[], configDir: string, options: LoadExp
     }
 
     if (rules && rules.length > 0) {
-      entry.mutators = rules.map(buildMutator);
+      entry.mutators = rules.map(rule => buildMutator(rule, availableMutators));
       log(`      ⚙️  Rules: ${rules.length} configured`, 'info', options);
     }
 
@@ -996,6 +1015,14 @@ export async function loadExperienceFromConfig(
   const client = new SantiagoWebPlayClient({ sessionId });
 
   try {
+    // Fetch blueprint for mutator ID resolution
+    let availableMutators: Map<string, any> | null = null;
+    try {
+      availableMutators = await client.listAvailableMutators();
+    } catch (error) {
+      log(`⚠️  Could not fetch blueprint for mutator ID resolution: ${error instanceof Error ? error.message : String(error)}`, 'warn', opts);
+    }
+
     // Fetch current experience
     log(`\n🔄 Fetching current experience (${finalPlayElementId})...`, 'info', opts);
     const current = await client.getPlayElementDecoded({
@@ -1037,7 +1064,7 @@ export async function loadExperienceFromConfig(
     }
 
     // Build map rotation
-    const maps = buildMapRotation(config.maps, configDir, opts);
+    const maps = buildMapRotation(config.maps, configDir, opts, availableMutators || undefined);
     const rotationBehavior = normalizeRotationBehavior(config.rotation || config.rotationBehavior);
     const rotationName = ['LOOP', 'EORMM', 'ONE_MAP'][rotationBehavior] || 'LOOP';
     log(`   Rotation behavior: ${rotationName}`, 'info', opts);
@@ -1053,7 +1080,7 @@ export async function loadExperienceFromConfig(
     if (config.globalRules && config.globalRules.length > 0) {
       log(`\n⚙️  Applying global rules:`, 'info', opts);
       const globalMutators = config.globalRules
-        .map(rule => buildMutator(rule))
+        .map(rule => buildMutator(rule, availableMutators || undefined))
         .filter((m): m is Mutator => m !== null && m !== undefined);
 
       if (!updateData.playElementDesign) {
