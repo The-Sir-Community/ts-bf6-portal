@@ -757,9 +757,6 @@ function buildMutator(ruleConfig: RuleConfig, availableMutators?: Map<string, an
     let perTeamValues = rule.perTeamValues;
     let defaultValue = rule.defaultValue;
 
-    // Debug: Always log sparse rule values
-    console.log(`[SPARSE_RULE] Mutator '${rule.name}': perTeamValues=${JSON.stringify(perTeamValues)}, defaultValue=${defaultValue}`);
-
     // If we have integers in the sparse values, all values should be integers
     // This ensures sparseInt mutator gets proper integer values
     if (hasInt) {

@@ -1511,11 +1511,14 @@ class SantiagoWebPlayClient {
   private async invokeGrpc(method: string, payload: Uint8Array): Promise<Uint8Array> {
     const frame = encodeGrpcWebFrame(payload);
     const url = `https://${this.config.host}/santiago.web.play.WebPlay/${method}`;
+    const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
 
-    console.log(`[DEBUG] POST ${method}: body ${payload.length} bytes (frame ${frame.length} bytes)`);
+    if (debug) {
+      console.log(`[DEBUG] POST ${method}: body ${payload.length} bytes (frame ${frame.length} bytes)`);
+    }
 
     // Log mutator markers in payload
-    if (method === 'updatePlayElement') {
+    if (method === 'updatePlayElement' && debug) {
       const payloadStr = new TextDecoder().decode(payload.slice(0, Math.min(5000, payload.length)));
       const mutatorMatches = payloadStr.match(/[A-Za-z_]*[Aa]llowed[A-Za-z_]*/g) || [];
       if (mutatorMatches.length > 0) {
@@ -1538,7 +1541,6 @@ class SantiagoWebPlayClient {
         console.log(`[DEBUG] Saved frame to /tmp/sbx6_request_frame.bin (${frame.byteLength} bytes)`);
       } catch (e) {
         // Silently fail if file write not available
-        console.log(`[DEBUG] Could not save frame: ${e instanceof Error ? e.message : 'unknown error'}`);
       }
     }
 
@@ -1548,21 +1550,27 @@ class SantiagoWebPlayClient {
       body: frame as any,
     });
 
-    console.log(`[DEBUG] Response status: ${response.status} ${response.statusText}`);
+    if (debug) {
+      console.log(`[DEBUG] Response status: ${response.status} ${response.statusText}`);
+    }
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.log('[DEBUG] Error body:', errorBody);
+      if (debug) {
+        console.log('[DEBUG] Error body:', errorBody);
+      }
       throw new Error(`gRPC-Web request failed: ${response.status} ${response.statusText}`);
     }
 
     const responseData = new Uint8Array(await response.arrayBuffer());
-    console.log(`[DEBUG] Response frame size: ${responseData.length} bytes`);
+    if (debug) {
+      console.log(`[DEBUG] Response frame size: ${responseData.length} bytes`);
+    }
 
     // Debug: log gRPC trailers in response headers
     const grpcStatus = response.headers.get('grpc-status');
     const grpcMessage = response.headers.get('grpc-message');
-    if (grpcStatus || grpcMessage) {
+    if ((grpcStatus || grpcMessage) && debug) {
       console.log(`[DEBUG] gRPC trailers:`, { grpcStatus, grpcMessage });
     }
 
@@ -1573,16 +1581,19 @@ class SantiagoWebPlayClient {
    * Call getPlayElement RPC and return the raw protobuf payload (without gRPC-Web framing)
    */
   async getPlayElement(request: GetPlayElementRequest): Promise<Uint8Array> {
+    const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
     const requestBody = encodeGetPlayElementRequest(request);
 
     const message = await this.invokeGrpc('getPlayElement', requestBody);
 
-    console.log('[DEBUG] getPlayElement response size:', message.length, 'bytes');
-    if (message.length > 0) {
-      const preview = Array.from(message.slice(0, 32))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join(' ');
-      console.log('[DEBUG] getPlayElement response preview:', preview, '...');
+    if (debug) {
+      console.log('[DEBUG] getPlayElement response size:', message.length, 'bytes');
+      if (message.length > 0) {
+        const preview = Array.from(message.slice(0, 32))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join(' ');
+        console.log('[DEBUG] getPlayElement response preview:', preview, '...');
+      }
     }
 
     return message;
@@ -1607,6 +1618,7 @@ class SantiagoWebPlayClient {
    * @param attachmentIds - Array of attachment IDs to delete
    */
   async deleteAttachments(designId: string, attachmentIds: string[]): Promise<void> {
+    const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
     if (attachmentIds.length === 0) {
       return; // Nothing to delete
     }
@@ -1627,7 +1639,9 @@ class SantiagoWebPlayClient {
     const message = DeleteAttachmentsRequest.create(requestData);
     const buffer = DeleteAttachmentsRequest.encode(message).finish();
 
-    console.log(`[DEBUG] Deleting ${attachmentIds.length} attachment(s) from design ${designId}`);
+    if (debug) {
+      console.log(`[DEBUG] Deleting ${attachmentIds.length} attachment(s) from design ${designId}`);
+    }
     await this.invokeGrpc('DeleteAttachments', buffer);
   }
 
@@ -1660,6 +1674,7 @@ class SantiagoWebPlayClient {
    * ```
    */
   async updatePlayElement(options: UpdatePlayElementOptions): Promise<PlayElementResponse> {
+    const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
     let { id, playElement, playElementDesign, current: providedCurrent } = options;
 
     // Early validation
@@ -1693,7 +1708,9 @@ class SantiagoWebPlayClient {
       current.playElementDesign.attachments.forEach((att: any) => {
         if (att.id && !newAttachmentIds.has(att.id)) {
           attachmentsToDelete.push(att.id);
-          console.log(`[DEBUG] Marking attachment for deletion: ${att.filename?.value ?? att.filename ?? att.id} (${att.id})`);
+          if (debug) {
+            console.log(`[DEBUG] Marking attachment for deletion: ${att.filename?.value ?? att.filename ?? att.id} (${att.id})`);
+          }
         }
       });
     }
@@ -1714,7 +1731,9 @@ class SantiagoWebPlayClient {
           if (hasErrors) {
             hadErrors = true;
             // Clear errors from attachments that are being updated
-            console.log(`[DEBUG] Clearing errors from attachment: ${att.filename?.value ?? att.id}`);
+            if (debug) {
+              console.log(`[DEBUG] Clearing errors from attachment: ${att.filename?.value ?? att.id}`);
+            }
             return { ...att, errors: [] };
           }
 
@@ -1727,14 +1746,16 @@ class SantiagoWebPlayClient {
         attachments: cleanedAttachments
       };
 
-      if (cleanedAttachments.length < originalCount) {
+      if (cleanedAttachments.length < originalCount && debug) {
         console.log(`[DEBUG] Removed ${originalCount - cleanedAttachments.length} attachment(s)`);
       }
     }
 
     // Reset ERROR state to DRAFT if we had errors
     if (hadErrors && playElement.publishStateType === PublishState.ERROR) {
-      console.log(`[DEBUG] Resetting publish state from ERROR to DRAFT`);
+      if (debug) {
+        console.log(`[DEBUG] Resetting publish state from ERROR to DRAFT`);
+      }
       playElement = {
         ...playElement,
         publishStateType: PublishState.DRAFT
