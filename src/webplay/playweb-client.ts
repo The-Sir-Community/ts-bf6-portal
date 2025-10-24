@@ -40,7 +40,26 @@ class BinaryWriter {
   }
 }
 
-const PROTO_PATH = path.resolve(__dirname, '../../../battlefield_portal.proto');
+// Resolve proto path - try multiple locations for npm/local installs
+function getProtoPath(): string {
+  // Try path from compiled JS in dist/src/webplay/
+  const localPath = path.resolve(__dirname, '../../../battlefield_portal.proto');
+  if (fs.existsSync(localPath)) {
+    return localPath;
+  }
+
+  // Try from package root (for npm installed packages)
+  const packageRoot = path.resolve(__dirname, '../../../..');
+  const npmPath = path.join(packageRoot, 'battlefield_portal.proto');
+  if (fs.existsSync(npmPath)) {
+    return npmPath;
+  }
+
+  // Fallback to original path (will error with helpful message)
+  return localPath;
+}
+
+const PROTO_PATH = getProtoPath();
 let protoRootPromise: Promise<protobufjs.Root> | null = null;
 
 const PLAY_ELEMENT_TO_OBJECT_OPTIONS: protobufjs.IConversionOptions = {
@@ -54,6 +73,13 @@ const PLAY_ELEMENT_TO_OBJECT_OPTIONS: protobufjs.IConversionOptions = {
 
 async function loadProtoRoot(): Promise<protobufjs.Root> {
   if (!protoRootPromise) {
+    // Check if proto file exists before trying to load
+    if (!fs.existsSync(PROTO_PATH)) {
+      throw new Error(
+        `Proto file not found at ${PROTO_PATH}. ` +
+        `Make sure ts-bf6-portal is properly installed and includes battlefield_portal.proto`
+      );
+    }
     protoRootPromise = protobufjs.load(PROTO_PATH);
   }
   return protoRootPromise;
@@ -78,7 +104,16 @@ function unwrapGrpcWebMessage(data: Uint8Array, headers?: Headers): Uint8Array {
 
         if (grpcStatus) {
           if (grpcStatus !== '0') {
-            throw new Error(`gRPC error ${grpcStatus}: ${grpcMessage || 'Unknown error'}`);
+            let errorMsg = `gRPC error ${grpcStatus}: ${grpcMessage || 'Unknown error'}`;
+
+            // Add context for common error codes
+            if (grpcStatus === '16') {
+              errorMsg += '\n\nAuthentication Error (16): Your session ID is invalid or expired.\nPlease verify your BF_PORTAL_SESSION_ID is current and valid.';
+            } else if (grpcStatus === '13') {
+              errorMsg += '\n\nInvalid Argument Error (13): The request was malformed or missing required fields.';
+            }
+
+            throw new Error(errorMsg);
           }
           // grpc-status: 0 means success, return empty message
           return new Uint8Array(0);
@@ -1524,6 +1559,12 @@ class SantiagoWebPlayClient {
     const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
 
     if (debug) {
+      console.log(`[DEBUG] DEBUG env var is enabled`);
+      console.log(`[DEBUG] Invoking ${method} on ${this.config.host}`);
+      console.log(`[DEBUG] gRPC headers:`, {
+        tenancy: this.config.tenancy,
+        sessionId: this.config.sessionId ? `${this.config.sessionId.substring(0, 20)}...` : '(not set)',
+      });
       console.log(`[DEBUG] POST ${method}: body ${payload.length} bytes (frame ${frame.length} bytes)`);
     }
 
