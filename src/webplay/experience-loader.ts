@@ -757,6 +757,9 @@ function buildMutator(ruleConfig: RuleConfig): Mutator {
     let perTeamValues = rule.perTeamValues;
     let defaultValue = rule.defaultValue;
 
+    // Debug: Always log sparse rule values
+    console.log(`[SPARSE_RULE] Mutator '${rule.name}': perTeamValues=${JSON.stringify(perTeamValues)}, defaultValue=${defaultValue}`);
+
     // If we have integers in the sparse values, all values should be integers
     // This ensures sparseInt mutator gets proper integer values
     if (hasInt) {
@@ -1061,8 +1064,23 @@ export async function loadExperienceFromConfig(
         updateData.playElementDesign.mutators = [];
       }
 
-      // Add global mutators (these apply to entire experience, not per-map)
-      updateData.playElementDesign.mutators.push(...globalMutators);
+      // Replace or add global mutators (these apply to entire experience, not per-map)
+      // Instead of just pushing, we need to replace existing mutators with the same name
+      // and preserve their IDs from the server
+      for (const newMutator of globalMutators) {
+        const existingIndex = updateData.playElementDesign.mutators.findIndex(
+          m => m.name === newMutator.name
+        );
+        if (existingIndex >= 0) {
+          // Replace existing mutator with same name, but preserve the ID from the server
+          const existingMutator = updateData.playElementDesign.mutators[existingIndex];
+          newMutator.id = existingMutator.id;
+          updateData.playElementDesign.mutators[existingIndex] = newMutator;
+        } else {
+          // Add new mutator (it won't have an ID, which is OK for new mutators)
+          updateData.playElementDesign.mutators.push(newMutator);
+        }
+      }
       log(`   Applied ${globalMutators.length} global rule(s)`, 'info', opts);
     }
 

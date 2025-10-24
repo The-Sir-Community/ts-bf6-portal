@@ -3,6 +3,7 @@ import protobufjs from 'protobufjs';
 import * as crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import * as fs from 'fs';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -1351,19 +1352,16 @@ export function sparseMutator(
     actualDefaultValue = teamValues[0];
   }
 
-  // Build sparse values array - include all values since we need complete team mapping
+  // Build sparse values array - include all values with explicit field for each team
   const sparseValues: Array<{ index: number; value?: boolean | number }> = [];
   for (let i = 0; i < teamValues.length; i++) {
     const teamId = i + 1; // Team IDs are 1-based
     const value = teamValues[i];
 
     if (valueType === 'boolean' || typeof value === 'boolean') {
-      // For booleans, only include if different from default
-      if (actualDefaultValue !== value) {
-        sparseValues.push({ index: teamId, value: value as boolean });
-      } else {
-        sparseValues.push({ index: teamId }); // Include entry without value
-      }
+      // ALWAYS include the value field - the proto encoder expects all fields to be present
+      // Even if the value matches the default, we must encode it explicitly
+      sparseValues.push({ index: teamId, value: value as boolean });
     } else {
       sparseValues.push({ index: teamId, value: value as number });
     }
@@ -1515,6 +1513,34 @@ class SantiagoWebPlayClient {
     const url = `https://${this.config.host}/santiago.web.play.WebPlay/${method}`;
 
     console.log(`[DEBUG] POST ${method}: body ${payload.length} bytes (frame ${frame.length} bytes)`);
+
+    // Log mutator markers in payload
+    if (method === 'updatePlayElement') {
+      const payloadStr = new TextDecoder().decode(payload.slice(0, Math.min(5000, payload.length)));
+      const mutatorMatches = payloadStr.match(/[A-Za-z_]*[Aa]llowed[A-Za-z_]*/g) || [];
+      if (mutatorMatches.length > 0) {
+        console.log(`[DEBUG] Found mutator keywords in payload: ${[...new Set(mutatorMatches)].slice(0, 10).join(', ')}`);
+      } else {
+        console.log(`[DEBUG] No mutator keywords found in first 5000 bytes of payload`);
+      }
+
+      // Save request payload for analysis - output as hex for logging
+      const frameHex = Array.from(new Uint8Array(frame))
+        .slice(0, 200)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ');
+      console.log(`[DEBUG] Request frame hex (first 200 bytes): ${frameHex}`);
+      console.log(`[DEBUG] Total frame size: ${frame.byteLength} bytes`);
+
+      // Save frame to file for binary comparison
+      try {
+        fs.writeFileSync('/tmp/sbx6_request_frame.bin', Buffer.from(frame));
+        console.log(`[DEBUG] Saved frame to /tmp/sbx6_request_frame.bin (${frame.byteLength} bytes)`);
+      } catch (e) {
+        // Silently fail if file write not available
+        console.log(`[DEBUG] Could not save frame: ${e instanceof Error ? e.message : 'unknown error'}`);
+      }
+    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -1746,11 +1772,13 @@ class SantiagoWebPlayClient {
       });
 
     // Build the update payload
+    // NOTE: We intentionally omit designMetadata to match Portal UI behavior
+    // (sandbox.har captures show the UI doesn't send designMetadata in updates)
     const updatePayload = {
       id: playElement.id ?? id,
       name: playElement.name ?? '',
       description: cloneStringValue(playElement.description),
-      designMetadata: playElementDesign.designMetadata ?? undefined,
+      // designMetadata: playElementDesign.designMetadata ?? undefined,  // OMITTED - matches UI behavior
       mapRotation: playElementDesign.mapRotation ?? undefined,
       mutators: (playElementDesign.mutators ?? []).filter(Boolean),
       assetCategories: (playElementDesign.assetCategories ?? []).filter(Boolean),
@@ -1876,6 +1904,164 @@ class SantiagoWebPlayClient {
       raw: updateResponseBytes,
       decoded,
     };
+  }
+
+  /**
+   * Get the scheduled blueprint ID for the current session
+   * @returns Blueprint ID and version
+   */
+  async getScheduledBlueprints() {
+    const root = await loadProtoRoot();
+    const GetScheduledBlueprintsRequest = root.lookupType('battlefield.portal.GetScheduledBlueprintsRequest');
+
+    const request = GetScheduledBlueprintsRequest.create({});
+    const message = GetScheduledBlueprintsRequest.encode(request).finish();
+
+    const responseBytes = await this.invokeGrpc('getScheduledBlueprints', message);
+    const GetScheduledBlueprintsResponse = root.lookupType('battlefield.portal.GetScheduledBlueprintsResponse');
+    const response = GetScheduledBlueprintsResponse.decode(responseBytes);
+
+    return GetScheduledBlueprintsResponse.toObject(response, PLAY_ELEMENT_TO_OBJECT_OPTIONS);
+  }
+
+  /**
+   * Get the full blueprint definition including all available mutators
+   * @param blueprintId Blueprint ID from getScheduledBlueprints
+   * @param version Blueprint version
+   * @returns Full blueprint with available mutators
+   */
+  async getBlueprintById(blueprintId: string, version: string) {
+    const root = await loadProtoRoot();
+    const GetBlueprintsByIdRequest = root.lookupType('battlefield.portal.GetBlueprintsByIdRequest');
+
+    const request = GetBlueprintsByIdRequest.create({
+      blueprintIds: [{ id: blueprintId, version }]
+    });
+    const message = GetBlueprintsByIdRequest.encode(request).finish();
+
+    const responseBytes = await this.invokeGrpc('getBlueprintsById', message);
+    const GetBlueprintsByIdResponse = root.lookupType('battlefield.portal.GetBlueprintsByIdResponse');
+    const response = GetBlueprintsByIdResponse.decode(responseBytes);
+
+    return GetBlueprintsByIdResponse.toObject(response, PLAY_ELEMENT_TO_OBJECT_OPTIONS);
+  }
+
+  /**
+   * List all available mutators for this blueprint with their valid value constraints
+   * @returns Map of mutator names to their configurations and constraints
+   */
+  async listAvailableMutators(): Promise<Map<string, any>> {
+    try {
+      // Get scheduled blueprint ID
+      const scheduledResponse = await this.getScheduledBlueprints();
+      const blueprintIds = (scheduledResponse as any).blueprintIds;
+
+      if (!blueprintIds || blueprintIds.length === 0) {
+        console.log('No scheduled blueprints found');
+        return new Map();
+      }
+
+      const { id: blueprintId, version } = blueprintIds[0];
+      console.log(`\n📋 Fetching blueprint (ID: ${blueprintId}, Version: ${version})...`);
+
+      // Get full blueprint
+      const blueprintResponse = await this.getBlueprintById(blueprintId, version);
+      const blueprints = (blueprintResponse as any).blueprints;
+
+      if (!blueprints || blueprints.length === 0) {
+        console.log('No blueprints found');
+        return new Map();
+      }
+
+      const blueprint = blueprints[0];
+      const availableGameData = blueprint.availableGameData;
+
+      if (!availableGameData || !availableGameData.mutators) {
+        console.log('No available mutators in blueprint');
+        return new Map();
+      }
+
+      const mutators = new Map();
+      const mutatorList = availableGameData.mutators;
+
+      console.log(`\n✅ Found ${mutatorList.length} available mutators:\n`);
+      console.log('═'.repeat(100));
+
+      mutatorList.forEach((mut: any, index: number) => {
+        const mutatorInfo = {
+          name: mut.name,
+          id: mut.id,
+          category: mut.category || '(no category)',
+          kind: this.describeMutatorKind(mut.kind),
+        };
+
+        mutators.set(mut.name, mutatorInfo);
+
+        console.log(`\n${index + 1}. ${mut.name}`);
+        console.log(`   ID: ${mut.id}`);
+        console.log(`   Category: ${mut.category || '(no category)'}`);
+        console.log(`   Type: ${this.describeMutatorKind(mut.kind)}`);
+      });
+
+      console.log('\n' + '═'.repeat(100) + '\n');
+      return mutators;
+    } catch (error) {
+      console.error('Error fetching available mutators:', error instanceof Error ? error.message : error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to describe a mutator kind and its constraints
+   */
+  private describeMutatorKind(kind: any): string {
+    if (!kind) return 'unknown';
+
+    if (kind.mutatorBoolean) {
+      return 'boolean (true/false)';
+    }
+    if (kind.mutatorString) {
+      return 'string';
+    }
+    if (kind.mutatorIntValues) {
+      const intVal = kind.mutatorIntValues.availableValues;
+      if (intVal?.range) {
+        return `integer (${intVal.range.minValue} - ${intVal.range.maxValue})`;
+      }
+      if (intVal?.sparseValues) {
+        return `integer (specific values allowed)`;
+      }
+      return 'integer';
+    }
+    if (kind.mutatorFloatValues) {
+      const floatVal = kind.mutatorFloatValues.availableValues;
+      if (floatVal?.range) {
+        return `float (${floatVal.range.minValue} - ${floatVal.range.maxValue})`;
+      }
+      if (floatVal?.sparseValues) {
+        return `float (specific values allowed)`;
+      }
+      return 'float';
+    }
+    if (kind.mutatorSparseBoolean) {
+      return 'sparse boolean (per-team: true/false)';
+    }
+    if (kind.mutatorSparseIntValues) {
+      const intVal = kind.mutatorSparseIntValues.availableValues;
+      if (intVal?.range) {
+        return `sparse integer (per-team: ${intVal.range.minValue} - ${intVal.range.maxValue})`;
+      }
+      return 'sparse integer (per-team)';
+    }
+    if (kind.mutatorSparseFloatValues) {
+      const floatVal = kind.mutatorSparseFloatValues.availableValues;
+      if (floatVal?.range) {
+        return `sparse float (per-team: ${floatVal.range.minValue} - ${floatVal.range.maxValue})`;
+      }
+      return 'sparse float (per-team)';
+    }
+
+    return 'unknown type';
   }
 
 }
