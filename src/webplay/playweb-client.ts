@@ -1488,6 +1488,8 @@ export interface GrpcWebClientConfig {
  */
 class SantiagoWebPlayClient {
   private config: Required<GrpcWebClientConfig>;
+  private blueprintCache: Map<string, any> = new Map();
+  private scheduledBlueprintsCache: any | null = null;
 
   constructor({
     host = DEFAULT_SANTIAGO_HOST,
@@ -1495,6 +1497,14 @@ class SantiagoWebPlayClient {
     sessionId,
   }: GrpcWebClientConfig) {
     this.config = { host, tenancy, sessionId };
+  }
+
+  /**
+   * Clear blueprint cache (useful when blueprints change or session expires)
+   */
+  clearBlueprintCache(): void {
+    this.blueprintCache.clear();
+    this.scheduledBlueprintsCache = null;
   }
 
   private buildHeaders(): Record<string, string> {
@@ -1932,6 +1942,11 @@ class SantiagoWebPlayClient {
    * @returns Blueprint ID and version
    */
   async getScheduledBlueprints() {
+    // Check cache first
+    if (this.scheduledBlueprintsCache) {
+      return this.scheduledBlueprintsCache;
+    }
+
     const root = await loadProtoRoot();
     const GetScheduledBlueprintsRequest = root.lookupType('battlefield.portal.GetScheduledBlueprintsRequest');
 
@@ -1942,7 +1957,12 @@ class SantiagoWebPlayClient {
     const GetScheduledBlueprintsResponse = root.lookupType('battlefield.portal.GetScheduledBlueprintsResponse');
     const response = GetScheduledBlueprintsResponse.decode(responseBytes);
 
-    return GetScheduledBlueprintsResponse.toObject(response, PLAY_ELEMENT_TO_OBJECT_OPTIONS);
+    const result = GetScheduledBlueprintsResponse.toObject(response, PLAY_ELEMENT_TO_OBJECT_OPTIONS);
+
+    // Cache the result
+    this.scheduledBlueprintsCache = result;
+
+    return result;
   }
 
   /**
@@ -1952,6 +1972,14 @@ class SantiagoWebPlayClient {
    * @returns Full blueprint with available mutators
    */
   async getBlueprintById(blueprintId: string, version: string) {
+    // Use cache key combining ID and version
+    const cacheKey = `${blueprintId}:${version}`;
+
+    // Check cache first
+    if (this.blueprintCache.has(cacheKey)) {
+      return this.blueprintCache.get(cacheKey);
+    }
+
     const root = await loadProtoRoot();
     const GetBlueprintsByIdRequest = root.lookupType('battlefield.portal.GetBlueprintsByIdRequest');
 
@@ -1964,7 +1992,12 @@ class SantiagoWebPlayClient {
     const GetBlueprintsByIdResponse = root.lookupType('battlefield.portal.GetBlueprintsByIdResponse');
     const response = GetBlueprintsByIdResponse.decode(responseBytes);
 
-    return GetBlueprintsByIdResponse.toObject(response, PLAY_ELEMENT_TO_OBJECT_OPTIONS);
+    const result = GetBlueprintsByIdResponse.toObject(response, PLAY_ELEMENT_TO_OBJECT_OPTIONS);
+
+    // Cache the result
+    this.blueprintCache.set(cacheKey, result);
+
+    return result;
   }
 
   /**
