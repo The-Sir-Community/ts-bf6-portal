@@ -17,16 +17,6 @@
     "types": ["node", "jest"],
     "isolatedModules": true
   },
-  "files": [
-    "src/portal/index.ts",
-    "src/bundler/strings-bundler.ts",
-    "src/bundler/index.ts",
-    "src/bundler/bundler.ts",
-    "src/bundler/cli.ts",
-    "src/bundler/test-runner.ts",
-    "src/webplay/index.ts",
-    "src/webplay/playweb-client.ts",
-    "src/webplay/response-decoder.ts",
-    "src/webplay/experience-loader.ts"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "node_modules"]
 }
