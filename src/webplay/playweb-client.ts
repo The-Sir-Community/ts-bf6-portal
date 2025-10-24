@@ -2033,6 +2033,68 @@ class SantiagoWebPlayClient {
   }
 
   /**
+   * Get available asset categories from the scheduled blueprint
+   * Returns a Map of category names to their tag IDs
+   */
+  async listAvailableAssetCategories(): Promise<Map<string, string>> {
+    try {
+      // Get scheduled blueprint
+      const scheduledBlueprints = await this.getScheduledBlueprints();
+      const blueprintIds = scheduledBlueprints.blueprintIds || [];
+      if (blueprintIds.length === 0) {
+        console.log('No scheduled blueprints found');
+        return new Map();
+      }
+
+      const blueprint = blueprintIds[0];
+
+      // Get blueprint details
+      const blueprintResponse = await this.getBlueprintById(blueprint.id, blueprint.version);
+
+      const availableGameData = blueprintResponse.blueprints[0]?.availableGameData;
+      if (!availableGameData) {
+        console.log('No available game data in blueprint');
+        return new Map();
+      }
+
+      // Get asset categories field (handle both camelCase and snake_case)
+      const assetCategoriesField = availableGameData.assetCategories || availableGameData.asset_categories;
+      if (!assetCategoriesField) {
+        console.log('No asset categories in blueprint');
+        return new Map();
+      }
+
+      const categories = new Map<string, string>();
+      const allTags: any[] = [];
+
+      // Collect all tags from both root_tags and tags (handle both camelCase and snake_case)
+      const rootTags = assetCategoriesField.rootTags || assetCategoriesField.root_tags;
+      const tags = assetCategoriesField.tags;
+
+      if (rootTags && Array.isArray(rootTags)) {
+        allTags.push(...rootTags);
+      }
+      if (tags && Array.isArray(tags)) {
+        allTags.push(...tags);
+      }
+
+      // Build map of name -> tag_id (handle both camelCase and snake_case)
+      allTags.forEach((tag: any) => {
+        const tagId = tag.tagId || tag.tag_id;
+        const name = tag.name;
+        if (tagId && name) {
+          categories.set(name, tagId);
+        }
+      });
+
+      return categories;
+    } catch (error) {
+      console.error('Error fetching available asset categories:', error instanceof Error ? error.message : error);
+      throw error;
+    }
+  }
+
+  /**
    * Helper to describe a mutator kind and its constraints
    */
   private describeMutatorKind(kind: any): string {

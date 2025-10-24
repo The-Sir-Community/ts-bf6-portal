@@ -664,13 +664,27 @@ const unmappedUuids = new Set<string>();
 /**
  * Convert asset restriction config to internal AssetCategory format
  */
-function convertAssetRestrictionToCategory(restriction: AssetRestriction): any | null {
+function convertAssetRestrictionToCategory(restriction: AssetRestriction, availableAssetCategories?: Map<string, string>): any | null {
   if (!restriction.tagId) {
     return null;
   }
 
   // Convert readable name to UUID if needed
-  const uuid = nameToUUID(restriction.tagId);
+  // First try using the Blueprint data, then fall back to hardcoded map
+  let uuid = restriction.tagId;
+  if (availableAssetCategories) {
+    const blueprintUuid = availableAssetCategories.get(restriction.tagId);
+    if (blueprintUuid) {
+      uuid = blueprintUuid;
+    } else {
+      // Tag name not found in blueprint
+      console.warn(`Asset category '${restriction.tagId}' not found in Blueprint`);
+      return null;
+    }
+  } else {
+    // Fall back to hardcoded mapping if no blueprint data
+    uuid = nameToUUID(restriction.tagId);
+  }
 
   // Build the asset category structure
   const category: any = {
@@ -1012,12 +1026,14 @@ export async function loadExperienceFromConfig(
   const client = new SantiagoWebPlayClient({ sessionId });
 
   try {
-    // Fetch blueprint for mutator ID resolution
+    // Fetch blueprint for mutator and asset category ID resolution
     let availableMutators: Map<string, any> | null = null;
+    let availableAssetCategories: Map<string, string> | null = null;
     try {
       availableMutators = await client.listAvailableMutators();
+      availableAssetCategories = await client.listAvailableAssetCategories();
     } catch (error) {
-      log(`⚠️  Could not fetch blueprint for mutator ID resolution: ${error instanceof Error ? error.message : String(error)}`, 'warn', opts);
+      log(`⚠️  Could not fetch blueprint for mutator and asset category resolution: ${error instanceof Error ? error.message : String(error)}`, 'warn', opts);
     }
 
     // Fetch current experience
@@ -1117,7 +1133,7 @@ export async function loadExperienceFromConfig(
       }
 
       updateData.playElementDesign.assetCategories = config.restrictions
-        .map(restriction => convertAssetRestrictionToCategory(restriction))
+        .map(restriction => convertAssetRestrictionToCategory(restriction, availableAssetCategories || undefined))
         .filter((c): c is any => c !== null);
 
       log(`   Applied ${updateData.playElementDesign.assetCategories.length} restriction(s)`, 'info', opts);
