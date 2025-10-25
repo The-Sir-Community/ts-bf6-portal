@@ -3,8 +3,8 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { bundle } from '../dist/src/bundler/bundler.js';
-import { loadExperienceFromConfig } from '../dist/src/webplay/experience-loader.js';
+import { bundle } from '../dist/bundler/bundler.js';
+import { loadExperienceFromConfig } from '../dist/webplay/experience-loader.js';
 
 const TOOL_NAME = 'ts-bf6-deploy';
 const DEFAULT_CONFIG_FILE = 'ts-bf6-portal.config.json';

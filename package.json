@@ -8,10 +8,9 @@
     "README.md",
     "LICENSE",
     "bin",
-    "scripts/post-build.js",
-    "battlefield_portal.proto"
+    "battlefield_portal.proto",
+    "global.d.ts"
   ],
-  "types": "./dist/src/portal/index.d.ts",
   "keywords": [
     "battlefield",
     "bf6",
@@ -29,21 +28,29 @@
     "access": "public"
   },
   "type": "module",
-  "main": "./dist/src/portal/index.js",
-  "module": "./dist/src/portal/index.js",
+  "main": "./dist/portal/index.js",
+  "module": "./dist/portal/index.js",
+  "types": "./dist/portal/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/portal/index.d.ts",
-      "import": "./dist/src/portal/index.js"
+      "types": "./dist/portal/index.d.ts",
+      "import": "./dist/portal/index.js"
+    },
+    "./global": {
+      "types": "./dist/portal/global.d.ts"
+    },
+    "./portalsdk": {
+      "types": "./dist/portalsdk/index.d.ts",
+      "import": "./dist/portalsdk/index.js"
     },
     "./webplay": {
-      "types": "./dist/src/webplay/index.d.ts",
-      "import": "./dist/src/webplay/index.js"
+      "types": "./dist/webplay/index.d.ts",
+      "import": "./dist/webplay/index.js"
     }
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "postbuild": "node ./scripts/post-build.js",
+    "postinstall": "node bin/postinstall.mjs",
     "test": "npm run test:bundler && npm run test:webplay",
     "test:bundler": "tsx src/bundler/test-runner.ts",
     "test:webplay": "jest",
@@ -52,7 +59,7 @@
     "example": "ts-node examples/example.ts",
     "load-config": "ts-node examples/load-experience-from-config.ts",
     "prepublishOnly": "npm run build",
-    "prepare": "npm run build"
+    "prepare": "npm run build && npm run postinstall"
   },
   "homepage": "https://github.com/The-Sir-Community/ts-bf6-portal#readme",
   "bugs": {
@@ -79,6 +86,6 @@
     "ts-bf6-list-mutators": "./bin/ts-bf6-list-mutators.mjs",
     "ts-bf6-list-asset-categories": "./bin/ts-bf6-list-asset-categories.mjs",
     "ts-bf6-validate-config": "./bin/ts-bf6-validate-config.mjs",
-    "ts-bf6-strings": "./dist/src/bundler/strings-bundler.js"
+    "ts-bf6-strings": "./dist/bundler/strings-bundler.js"
   }
 }

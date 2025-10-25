@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { SantiagoWebPlayClient } from '../dist/src/webplay/playweb-client.js';
+import { SantiagoWebPlayClient } from '../dist/webplay/playweb-client.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';

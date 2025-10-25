@@ -42,14 +42,16 @@ class BinaryWriter {
 
 // Resolve proto path - try multiple locations for npm/local installs
 function getProtoPath(): string {
-  // Try path from compiled JS in dist/src/webplay/
-  const localPath = path.resolve(__dirname, '../../../battlefield_portal.proto');
+  // Try path from compiled JS in dist/webplay/
+  // From dist/webplay/ we need to go up 2 levels to reach the package root
+  const localPath = path.resolve(__dirname, '../../battlefield_portal.proto');
   if (fs.existsSync(localPath)) {
     return localPath;
   }
 
-  // Try from package root (for npm installed packages)
-  const packageRoot = path.resolve(__dirname, '../../../..');
+  // Try from node_modules parent (for npm installed packages)
+  // From dist/webplay/ we need to go up 3 levels to reach the node_modules parent
+  const packageRoot = path.resolve(__dirname, '../../..');
   const npmPath = path.join(packageRoot, 'battlefield_portal.proto');
   if (fs.existsSync(npmPath)) {
     return npmPath;

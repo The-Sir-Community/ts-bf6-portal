@@ -8,14 +8,14 @@
     "declaration": true,
     "declarationMap": true,
     "outDir": "dist",
-    "rootDir": ".",
+    "rootDir": "src",
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "lib": ["ES2020", "DOM"],
     "types": ["node", "jest"],
-    "isolatedModules": true
+    "typeRoots": ["./node_modules/@types", "./types"]
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts", "node_modules"]
