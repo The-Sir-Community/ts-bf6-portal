@@ -1,6 +1,6 @@
 {
   "name": "ts-bf6-portal",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "TypeScript helpers and Portal runtime declarations for Battlefield 6 modding",
   "license": "Proprietary",
   "files": [
